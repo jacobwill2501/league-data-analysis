@@ -1,0 +1,126 @@
+Champion Mastery - a statistical analysis of 1M+ games
+TL;DR:
+
+Of the 1 million + Gold-ish Ranked Solo Queue games I looked at...
+
+20% of players were on Champs they had less than 10k Mastery on.
+
+Under 10k Mastery has a 44% win rate vs. 51.5% for over 10k.
+
+This impact changes depending on your Champion, there's pretty graphics below plus a full table here: MASTERY IMPACT BY CHAMPION
+
+ADC/Supports saw the least impact with their Mastery levels, Jungle saw the most
+
+There was a Heimerdinger with over 19 million Mastery.
+
+Champion Mastery - a statistical analysis of 1M+ games
+Hi, I'm Jack J (Twitter) and last week I wrote an article about how to win the drafting phase in solo queue. Of all the factors I studied, from counter picking to the average Champion win rates, Mastery was above and beyond the best indicator of a game’s outcome. Actually, to be more accurate; it was the lack of Mastery that made all the difference.
+
+So, today I have decided to unpack this single metric in more detail. How is Mastery distributed? What impact does it have? Does this change per Champion? How about per role? Today, we deep dive into Champion Mastery.
+
+
+An Introduction to Mastery
+
+To begin, let’s get a broad feel for it. Mastery is gained every single game and how much you receive depends on these four factors; result, performance, game length, current mastery. Win a long game where you perform well and are playing a Champion you have a high Mastery on and you’ll get more points than vice-versa.
+
+Although I struggled to find a concrete number, to give you some perspective it’s roughly in the region of 100-300 for a loss and 900-1100 for a win; averaging ~600 a game.
+
+
+A Summary of the Data
+
+Data Note: all statistics mentioned from here refer to a dataset of just over 1,000,000 Ranked Solo Queue games on patch 13.7, roughly equally split between NA, EUW and KR. The Elo is around Gold (some high Silver/some low Plat games)
+
+The distribution of Champion Mastery is highly spread, with an immense right tail. The highest Champion Mastery was 19,322,661. A notorious Heimerdinger player (OP.GG) called “GeT CoN TRollED”, who apparently exclusively runs TP/Heal whilst manually clicking their abilities.
+
+The mean was 141,877, however the median was only 41,322, a significant difference. If you have some experience in statistics, you’d have expected this variance, since the extreme long-tail outliers (like our friend GeT CoN TRollED) will pull the average way up; whilst not impacting the median nearly as much.
+
+For the graph below I cut the distribution at 250,000 to allow more focus on the grand majority of the players which are found in the sub-50,000 Mastery bracket. However, the tail continues, decreasing slowly until that final stub at 19,322,661.
+
+r/leagueoflegends - Distribution of Champion Mastery
+Distribution of Champion Mastery
+To put this into context, around 20% of all players were on Champions they had less than 10,000 Mastery on and just under 11% were on sub-5,000.
+
+The Impact on Win Rates
+From our new dataset, let’s recreate the graph from the original article that illustrates the impact this Mastery has on win rates:
+
+
+r/leagueoflegends - Mastery impact on Win Rates
+Mastery impact on Win Rates
+What we can see is that for those players who played a Champion they had sub-10k Mastery on, the average win rate is around 44%. As soon as you go above 10k, the win rate hits 50% and above. After this sudden increase from 44% to 50%, the remaining gain is very slight for every additional 10k.
+
+NOTE: If this doesn’t seem like it adds up, which to me it didn’t: 20% of the players games had a 44% win rate due to sub-10k mastery, the remaining 80% had a 51.5% win rate: (0.2 * 0.44) + (0.8 * 0.515) = 50%, as expected.
+
+The point at which players moved from below to above 50% win rate was around the 12,000 Mastery mark. This is very close to the point at which you get the flashable Level 4 (12,600). Whether Riot intended this or not, I am not sure. Using our broad estimate of 600 Mastery per game, that’s around 20 games of experience before you are no longer dragging down your win chance with the Champion.
+
+Interestingly, players on Champion’s with over 1M Mastery had a 51.73% win rate, whilst those between 50K-1M had the ever-so-slightly higher value of 51.77%. It’s far too small of a difference to be statistically significant, however it’s the lack of improvement that is interesting for these Champion aficionados. The obvious explanation is that these players play a majority of their games on a single Champion, and they also play a lot. What this means is that their elo has stabilised around it’s “true” value. If they played any other Champion they’d almost certainly lose a lot more, so the Mastery is more reflected in the variance between Champion win rates, instead of the raw value.
+
+The variance between Champions
+A common question I get asked about my work into Mastery is: how does this impact different Champions?
+
+Methodology
+
+First, let me explain the methodology for the rankings below. We need to account for the base win rate of a Champion, i.e. K’Sante top had a 44% win rate this patch, if someone had 100k Mastery and a 49% win rate we want to adjust from his base, not say “it’s still less than 50% therefore Mastery is useless”.
+
+So, I bucketed Champion’s into three categories, chosen to allow for enough data for most Champions whilst also demonstrating a significant change:
+
+Low: <10k
+
+Medium: 10k-100k
+
+High: 100k+
+
+I then took their average win rates for each and calculated the ratio between Low and Medium, and High and Medium. For instance, if a Champion had a 45% win rate when sub-10k Mastery, and 50% for 10k-100k, the Low ratio will be 0.9 (0.45 / 0.50).
+
+NOTE: This isn’t the only approach to this question, it’s just the one I chose that works fairly well.
+
+From here, I ranked each by their Low Mastery and High Mastery ratios to create a leaderboard in each role. I then assigned the roles based on play rates.
+
+Here is a full list of all the results: https://docs.google.com/spreadsheets/d/1avgTSdh0eD39jGbni6ybGTcrlYeUrw7SsJA_60j3fz4/edit?usp=sharing
+
+Champion Difficulty
+
+Let’s start with which Champion’s suffer the most when you have low Mastery. The other way to look at this is these are the Champion’s that are the hardest to pick-up the first time you play them.
+
+Personally, I found a few of these obvious (K’Sante, Riven, Ivern) and a few of them surprising (Nunu, Yuumi & Senna).
+
+r/leagueoflegends - HARDEST Champions to Win with LOW Mastery
+HARDEST Champions to Win with LOW Mastery
+Next, which Champion’s win rates are impacted the least when players are first timing (i.e. the easiest to pick-up). Again, some obvious ones but I was surprised to see Ryze, Vayne and Fiora here.
+
+r/leagueoflegends - EASIEST Champions to Win with LOW Mastery
+EASIEST Champions to Win with LOW Mastery
+Skill Ceiling
+
+Now, the same method except we’re looking at which Champion’s have the least increase in their win rate when going from 10k-100k to 100k+. In other words, the Champion’s with the lowest skill ceiling.
+
+Interestingly, top is mostly tanks, whilst support was mostly enchanters. All the “low ceiling” mid-laners were AP, even when looking way past the top 5.
+
+r/leagueoflegends - LOWEST Improvement with HIGH Mastery
+LOWEST Improvement with HIGH Mastery
+We can then look at the highest improvement with 100k+ Mastery, which we could call the “high skill-ceiling” Champions. I agree entirely with the mid-lane, although again was surprised to see Nunu to be both #1 hardest to pick-up and #1 highest skill ceiling as a jungler.
+
+r/leagueoflegends - HIGHEST Improvement with HIGH Mastery
+HIGHEST Improvement with HIGH Mastery
+Again, here are the full results:
+
+https://docs.google.com/spreadsheets/d/1avgTSdh0eD39jGbni6ybGTcrlYeUrw7SsJA_60j3fz4/edit?usp=sharing
+
+Variances by Lane
+Whilst creating these tables I noticed something odd. There were fairly major differences between the impacts depending on the lane. Some lanes were, on average, showing greater gains from Mastery than others.
+
+r/leagueoflegends - Variance of Mastery impact on Win Rate by lane
+Variance of Mastery impact on Win Rate by lane
+What I found was that Jungle had both the lowest win rate when the player was on a low Mastery Champion AND had the highest win rate with high Mastery. ADC was the flipside to this, with far less impact seen in their win rate if Mastery was either very low, or very high. In other words, for Jungle it mattered significantly more than for ADCs how experienced the player was on the Champion.
+
+I won’t argue whether this is reflective of the difficulty or impact of the respective roles, however it is a bizarre behaviour that could be looked into (just not by me, at least not today).
+
+Data Limitations
+As with all data analysis, there are limitations to be aware of. Simply to be kept in mind, but also areas of future exploration. I list a few that came to mind here:
+
+If certain Champions have a tendency to attract smurfs (1v5 penta-friendly Champions) then it can inflate low-Mastery win rates, since the player has likely put many more hours in on the Champion on another account.
+
+The Mastery data we sourced is a static look at the player, since this is the easiest to get hold of. Some players may have 10k Mastery over 2 days (i.e. spammed 20 games in a row on the Champion), whilst others may have 10k over 5 years, playing the Champion a few times each season. The difference between these win rates, I expect, would be drastic.
+
+Certain Champion’s may attract one-tricking more than others, which will change the make-up of the average player and their win rates. This could impact the win rates within the large buckets, such as 100k+, since some Champions may have lots of OTP’s with 1M+ Mastery (Yorick), whilst others may have mostly fairly average Mastery between 100k-150k and very few OTPs (Malphite).
+
+(A special thank you to Collin (Twitter) for designing the table graphics for me!)

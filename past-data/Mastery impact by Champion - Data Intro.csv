@@ -1,0 +1,28 @@
+,,
+,,
+,,Introduction
+,,Last year I wrote a statistical analysis of how to win solo queue draft: https://www.itero.gg/articles/draft-sq
+,,"The most important factor came out as Champion Mastery, so I wrote this follow-up statistical analysis of Mastery: "
+,,https://jackjgaming.substack.com/p/mastery-a-statistical-summary-of
+,,"This sheet contains the raw values which produced a number of tables from the article, split into two tabs:"
+,,Easiest to Learn: The Champion's which have the lowest decrease in their win rate when played by someone with low Mastery (<10K)
+,,Best to Master: The Champion's which gain the most win rate when player by someone with high Mastery (+100K)
+,,
+,,To sort/filter tables:
+,,1. Click into either tab
+,,2. Click anywhere on the table
+,,"3. In the top bar, click ""Data"" > ""Filter views"" > ""Create new filter view"""
+,,4.  Filter or Sort the table by clicking the icon
+,,
+,,Data Info.
+,,~1.1M games
+,,Ranked Solo Queue only
+,,Patch 13.7
+,,"Roughly equal mix of EUW, NA & KR"
+,,"Around Gold elo (some high Silver, some low Plat)"
+,,
+,,Author
+,,"Jack J (MSc), Data Scientist @ iTero Gaming"
+,,https://twitter.com/JackJGaming/
+,,https://www.linkedin.com/in/jack-j-williams/
+,,https://itero.gg/

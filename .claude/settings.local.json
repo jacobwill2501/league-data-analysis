@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "WebSearch",
+      "WebFetch(domain:developer.riotgames.com)",
+      "WebFetch(domain:hextechdocs.dev)",
+      "Bash(goose:*)",
+      "WebFetch(domain:block.github.io)",
+      "Bash(python -c:*)",
+      "Bash(python3:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(python:*)",
+      "Bash(sqlite3:*)",
+      "Bash(grep:*)"
+    ]
+  }
+}
