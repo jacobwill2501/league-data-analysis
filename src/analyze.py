@@ -36,6 +36,36 @@ def get_mastery_bucket(mastery_points: int) -> str:
         return 'high'
 
 
+def _learning_tier(score):
+    """Assign a tier label based on Learning Effectiveness Score"""
+    if score is None:
+        return None
+    if score > 0:
+        return 'Safe Blind Pick'
+    if score > -5:
+        return 'Low Risk'
+    if score > -15:
+        return 'Moderate'
+    if score > -25:
+        return 'High Risk'
+    return 'Avoid'
+
+
+def _mastery_tier(score):
+    """Assign a tier label based on Mastery Effectiveness Score"""
+    if score is None:
+        return None
+    if score > 8:
+        return 'Exceptional Payoff'
+    if score > 5:
+        return 'High Payoff'
+    if score > 2:
+        return 'Moderate Payoff'
+    if score > 0:
+        return 'Low Payoff'
+    return 'Not Worth Mastering'
+
+
 class MasteryAnalyzer:
     """Analyzes champion mastery impact on win rates"""
 
@@ -311,6 +341,20 @@ class MasteryAnalyzer:
             low_ratio = low_wr / med_wr if (low_wr is not None and med_wr is not None) else None
             high_ratio = high_wr / med_wr if (high_wr is not None and med_wr is not None) else None
 
+            # Win Rate Delta: raw percentage-point change from medium mastery
+            low_delta = (low_wr - med_wr) * 100 if (low_wr is not None and med_wr is not None) else None
+            delta = (high_wr - med_wr) * 100 if (high_wr is not None and med_wr is not None) else None
+            # Mastery Effectiveness Score: balances absolute WR viability with mastery improvement
+            mastery_score = ((high_wr * 100 - 50) + (high_ratio - 1) * 50) if (high_wr is not None and high_ratio is not None) else None
+            # Learning Effectiveness Score: balances low-mastery viability with small inexperience drop
+            learning_score = ((low_wr * 100 - 50) + (low_ratio - 1) * 50) if (low_wr is not None and low_ratio is not None) else None
+            # Investment Score: weighted combination of learning + mastery payoff
+            investment_score = (learning_score * 0.4 + mastery_score * 0.6) if (learning_score is not None and mastery_score is not None) else None
+
+            # Tier labels
+            learning_tier = _learning_tier(learning_score)
+            mastery_tier = _mastery_tier(mastery_score)
+
             lane_counts = data['lane_counts']
             most_common_lane = max(lane_counts, key=lane_counts.get) if lane_counts else None
 
@@ -330,6 +374,13 @@ class MasteryAnalyzer:
                 'high_games': data['high']['games'],
                 'low_ratio': low_ratio,
                 'high_ratio': high_ratio,
+                'low_delta': low_delta,
+                'delta': delta,
+                'mastery_score': mastery_score,
+                'learning_score': learning_score,
+                'investment_score': investment_score,
+                'learning_tier': learning_tier,
+                'mastery_tier': mastery_tier,
                 'most_common_lane': most_common_lane,
             }
 
@@ -403,14 +454,20 @@ class MasteryAnalyzer:
 
         # Rankings
         easiest_to_learn = sorted(
-            [(c, s) for c, s in champion_stats.items() if s['low_ratio'] is not None],
-            key=lambda x: x[1]['low_ratio'],
+            [(c, s) for c, s in champion_stats.items() if s['learning_score'] is not None],
+            key=lambda x: x[1]['learning_score'],
             reverse=True
         )
 
         best_to_master = sorted(
-            [(c, s) for c, s in champion_stats.items() if s['high_ratio'] is not None],
-            key=lambda x: x[1]['high_ratio'],
+            [(c, s) for c, s in champion_stats.items() if s['mastery_score'] is not None],
+            key=lambda x: x[1]['mastery_score'],
+            reverse=True
+        )
+
+        best_investment = sorted(
+            [(c, s) for c, s in champion_stats.items() if s['investment_score'] is not None],
+            key=lambda x: x[1]['investment_score'],
             reverse=True
         )
 
@@ -431,6 +488,9 @@ class MasteryAnalyzer:
             ],
             'best_to_master': [
                 {'champion': c, **s} for c, s in best_to_master
+            ],
+            'best_investment': [
+                {'champion': c, **s} for c, s in best_investment
             ],
         }
 
@@ -459,8 +519,8 @@ def main():
     parser.add_argument('--filter', choices=list(ELO_FILTERS.keys()) + ['all'],
                         default='all',
                         help='Elo filter to analyze (default: all)')
-    parser.add_argument('--patches', choices=['current', 'last3'], default='current',
-                        help='Patch range to include (default: current)')
+    parser.add_argument('--patches', choices=['current', 'last3'], default='last3',
+                        help='Patch range to include (default: last3)')
     parser.add_argument('--output', type=str, default='output/analysis',
                         help='Output directory')
     parser.add_argument('--verbose', action='store_true',
@@ -510,7 +570,9 @@ def main():
                 for entry in results['easiest_to_learn'][:5]:
                     logger.info(
                         f"    {entry['champion']:20s} "
-                        f"Low ratio: {entry['low_ratio']:.3f} "
+                        f"Score: {entry['learning_score']:.2f}  "
+                        f"Ratio: {entry['low_ratio']:.3f}  "
+                        f"Delta: {entry['low_delta']:+.2f}pp "
                         f"({entry['most_common_lane']})"
                     )
 
@@ -520,7 +582,21 @@ def main():
                 for entry in results['best_to_master'][:5]:
                     logger.info(
                         f"    {entry['champion']:20s} "
-                        f"High ratio: {entry['high_ratio']:.3f} "
+                        f"Score: {entry['mastery_score']:.2f}  "
+                        f"Ratio: {entry['high_ratio']:.3f}  "
+                        f"Delta: {entry['delta']:+.2f}pp "
+                        f"({entry['most_common_lane']})"
+                    )
+
+            # Print top 5 best investment
+            if results['best_investment']:
+                logger.info(f"\n  Top 5 Best Investment:")
+                for entry in results['best_investment'][:5]:
+                    logger.info(
+                        f"    {entry['champion']:20s} "
+                        f"Investment: {entry['investment_score']:.2f}  "
+                        f"Learn: {entry['learning_score']:.2f}  "
+                        f"Master: {entry['mastery_score']:.2f} "
                         f"({entry['most_common_lane']})"
                     )
 

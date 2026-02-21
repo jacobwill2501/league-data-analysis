@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import REGIONS
 from db import Database
-from riot_api import RiotAPIClient
+from riot_api import RiotAPIClient, _shutdown_event
 from utils import setup_logging, format_duration, format_number
 
 logger = logging.getLogger(__name__)
@@ -31,6 +31,7 @@ def _signal_handler(sig, frame):
     global _shutdown
     logger.info("\nShutdown requested, finishing current task...")
     _shutdown = True
+    _shutdown_event.set()  # Wake up any sleeping threads immediately
 
 
 signal.signal(signal.SIGINT, _signal_handler)

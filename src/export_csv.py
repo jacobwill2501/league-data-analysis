@@ -1,14 +1,16 @@
 """
 CSV Export script - Export CSVs matching the exact format of the original study
 
-Generates three CSVs per elo filter matching past-data/ format:
+Generates four CSVs per elo filter matching past-data/ format:
   - Data Intro
   - Easiest to Learn
   - Best to Master
+  - Best Investment
 """
 
 import argparse
 import csv
+import glob
 import json
 import logging
 import os
@@ -49,6 +51,20 @@ def format_ratio(value) -> str:
     return f'{value:.2f}'
 
 
+def format_delta(value) -> str:
+    """Format win rate delta as percentage points with sign"""
+    if value is None:
+        return 'low data'
+    return f'{value:+.2f}pp'
+
+
+def format_score(value) -> str:
+    """Format mastery effectiveness score to 2 decimal places"""
+    if value is None:
+        return 'low data'
+    return f'{value:.2f}'
+
+
 def get_lane_display(lane: str) -> str:
     """Convert internal lane name to display name"""
     return LANE_DISPLAY_NAMES.get(lane, lane or '')
@@ -72,11 +88,21 @@ def export_data_intro(results: dict, output_dir: str, filter_name: str):
         ['', '', ''],
         ['', '', ''],
         ['', '', 'Introduction'],
-        ['', '', 'This is a replication of Jack J\'s Champion Mastery analysis for Emerald+ elo.'],
+        ['', '', 'This is a replication and extension of Jack J\'s Champion Mastery analysis.'],
         ['', '', 'Original study: https://jackjgaming.substack.com/p/mastery-a-statistical-summary-of'],
-        ['', '', 'This sheet contains the raw values split into two tabs:'],
-        ['', '', 'Easiest to Learn: The Champions which have the lowest decrease in their win rate when played by someone with low Mastery (<10K)'],
-        ['', '', 'Best to Master: The Champions which gain the most win rate when played by someone with high Mastery (+100K)'],
+        ['', '', ''],
+        ['', '', 'The goal is to answer two questions using real match data:'],
+        ['', '', '1. Which champions can you pick up and perform well on immediately? (Easiest to Learn)'],
+        ['', '', '2. Which champions reward you the most for investing time to master them? (Best to Master)'],
+        ['', '', ''],
+        ['', '', 'We compare win rates across mastery levels to measure how much experience matters per champion.'],
+        ['', '', 'Champions are grouped by mastery points into Low / Medium / High buckets, and we compare'],
+        ['', '', 'win rates between buckets to find which champions improve (or don\'t) with practice.'],
+        ['', '', ''],
+        ['', '', 'This sheet contains the raw values split into three tabs:'],
+        ['', '', 'Easiest to Learn: Champions ranked by Learning Effectiveness Score (see below)'],
+        ['', '', 'Best to Master: Champions ranked by Mastery Effectiveness Score (see below)'],
+        ['', '', 'Best Investment: Champions ranked by combined Investment Score (see below)'],
         ['', '', ''],
         ['', '', 'To sort/filter tables:'],
         ['', '', '1. Click into either tab'],
@@ -91,9 +117,25 @@ def export_data_intro(results: dict, output_dir: str, filter_name: str):
         ['', '', 'Roughly equal mix of EUW, NA & KR'],
         ['', '', f'Elo filter: {filter_desc}'],
         ['', '', ''],
-        ['', '', 'Analysis Details'],
-        ['', '', 'Mastery buckets: Low (<10k) / Medium (10k-100k) / High (100k+)'],
+        ['', '', 'Mastery Buckets & Approximate Games Played'],
+        ['', '', 'Mastery points are earned per game: ~1,000 for a win, ~200 for a loss (~600 avg at 50% WR)'],
+        ['', '', 'Low Mastery: <10,000 points (~10 wins to ~50 losses, roughly 17 games at 50% WR)'],
+        ['', '', 'Medium Mastery: 10,000-100,000 points (~17 to ~167 games at 50% WR)'],
+        ['', '', 'High Mastery: 100,000+ points (~100 wins to ~500 losses, roughly 167+ games at 50% WR)'],
         ['', '', 'Minimum sample size: 100 games per bucket'],
+        ['', '', ''],
+        ['', '', 'Key Metrics'],
+        ['', '', 'Win Rate Delta: Raw percentage-point difference in win rate between mastery levels'],
+        ['', '', 'Mastery Effectiveness Score = (High WR% - 50) + (High Ratio - 1) * 50'],
+        ['', '', '  Balances absolute win rate viability with mastery improvement'],
+        ['', '', '  Champions that both improve significantly AND end up above 50% WR score highest'],
+        ['', '', '  Champions still sub-50% after mastery investment get penalized'],
+        ['', '', 'Learning Effectiveness Score = (Low WR% - 50) + (Low Ratio - 1) * 50'],
+        ['', '', '  Balances low-mastery viability with how small the inexperience drop is'],
+        ['', '', '  Champions that are both viable at low mastery AND don\'t drop much score highest'],
+        ['', '', 'Investment Score = Learning Score * 0.4 + Mastery Score * 0.6'],
+        ['', '', '  Weighted combination: 40% ease of learning, 60% mastery payoff'],
+        ['', '', '  Champions that are easy to pick up AND rewarding to master score highest'],
     ]
 
     path = os.path.join(output_dir, f'{filter_name} - Data Intro.csv')
@@ -113,37 +155,37 @@ def export_easiest_to_learn(results: dict, output_dir: str, filter_name: str):
     # Header row (row 1)
     rows.append(['', '', 'Most Common Lane', 'Champion Name',
                  'Low Mastery Win Rate', 'Medium Mastery Win Rate',
-                 'Low Mastery Ratio', '', '', ''])
+                 'Low Mastery Ratio', 'Win Rate Delta', 'Learning Effectiveness Score',
+                 'Tier', '', '', ''])
 
-    # Data rows with annotation columns starting at row 3
+    # Data rows with annotation columns
     for i, entry in enumerate(ranking):
         lane = get_lane_display(entry.get('most_common_lane', ''))
         champ = entry.get('champion', '')
         low_wr = format_win_rate(entry.get('low_wr'))
         med_wr = format_win_rate(entry.get('medium_wr'))
         ratio = format_ratio(entry.get('low_ratio'))
+        low_delta = format_delta(entry.get('low_delta'))
+        score = format_score(entry.get('learning_score'))
+        tier = entry.get('learning_tier', '')
 
-        row = ['', '', lane, champ, low_wr, med_wr, ratio, '', '', '']
+        row = ['', '', lane, champ, low_wr, med_wr, ratio, low_delta, score, tier, '', '', '']
 
-        # Annotation columns (G, H) at specific rows
-        # row index 1 = data row 1 (i=0), annotations at rows 3-8 in spreadsheet
-        # Row 3 in spreadsheet = index 2 in our rows list (after header)
-        # But the original has annotations starting at row 3 (0-indexed row 2)
-        # which corresponds to data row 2 (i=1)
+        # Annotation columns
         if i == 1:  # Row 3 in spreadsheet
-            row[6] = 'Low Mastery Ratio'
+            row[11] = 'Learning Effectiveness Score'
         elif i == 2:  # Row 4
-            row[6] = 'If high:'
-            row[7] = 'Easy to Learn'
+            row[11] = 'If high:'
+            row[12] = 'Viable at low mastery + small drop'
         elif i == 3:  # Row 5
-            row[6] = 'If low:'
-            row[7] = 'Hard to Learn'
+            row[11] = 'If low/negative:'
+            row[12] = 'Sub-50% WR or big inexperience penalty'
         elif i == 5:  # Row 7
-            row[6] = 'Low Mastery:'
-            row[7] = '<10,000'
+            row[11] = 'Low Mastery:'
+            row[12] = '<10,000 (~10 wins to ~50 losses on champ)'
         elif i == 6:  # Row 8
-            row[6] = 'Medium Mastery:'
-            row[7] = '10,000-100,000'
+            row[11] = 'Medium Mastery:'
+            row[12] = '10,000-100,000 (~17 games at 50% WR)'
 
         rows.append(row)
 
@@ -177,6 +219,8 @@ def export_best_to_master(results: dict, output_dir: str, filter_name: str):
                 'medium_wr': stats['medium_wr'],
                 'high_wr': None,
                 'high_ratio': None,
+                'delta': None,
+                'mastery_score': None,
                 'most_common_lane': stats.get('most_common_lane'),
             })
 
@@ -190,7 +234,8 @@ def export_best_to_master(results: dict, output_dir: str, filter_name: str):
     # Header row
     rows.append(['', '', 'Most Common Lane', 'Champion Name',
                  'Medium Mastery Win Rate', 'High Mastery Win Rate',
-                 'High Mastery Ratio', '', '', ''])
+                 'High Mastery Ratio', 'Win Rate Delta', 'Mastery Effectiveness Score',
+                 'Tier', '', '', ''])
 
     for i, entry in enumerate(all_entries):
         lane = get_lane_display(entry.get('most_common_lane', ''))
@@ -198,24 +243,27 @@ def export_best_to_master(results: dict, output_dir: str, filter_name: str):
         med_wr = format_win_rate(entry.get('medium_wr'))
         high_wr = format_win_rate(entry.get('high_wr'))
         ratio = format_ratio(entry.get('high_ratio'))
+        delta = format_delta(entry.get('delta'))
+        score = format_score(entry.get('mastery_score'))
+        tier = entry.get('mastery_tier', '')
 
-        row = ['', '', lane, champ, med_wr, high_wr, ratio, '', '', '']
+        row = ['', '', lane, champ, med_wr, high_wr, ratio, delta, score, tier, '', '', '']
 
         # Annotation columns
         if i == 1:  # Row 3
-            row[6] = 'High Mastery Ratio'
+            row[11] = 'Mastery Effectiveness Score'
         elif i == 2:  # Row 4
-            row[6] = 'If high:'
-            row[7] = 'Highest benefit to mastering'
+            row[11] = 'If high:'
+            row[12] = 'High WR + big mastery improvement'
         elif i == 3:  # Row 5
-            row[6] = 'If low:'
-            row[7] = 'Lowest benefit to mastering'
+            row[11] = 'If low/negative:'
+            row[12] = 'Still sub-50% WR after mastery'
         elif i == 5:  # Row 7
-            row[6] = 'High Mastery:'
-            row[7] = '100K+'
+            row[11] = 'High Mastery:'
+            row[12] = '100K+ (~100 wins to ~500 losses on champ)'
         elif i == 6:  # Row 8
-            row[6] = 'Medium Mastery:'
-            row[7] = '10,000-100,000'
+            row[11] = 'Medium Mastery:'
+            row[12] = '10,000-100,000 (~17 games at 50% WR)'
 
         rows.append(row)
 
@@ -227,8 +275,57 @@ def export_best_to_master(results: dict, output_dir: str, filter_name: str):
     logger.info(f"  Saved: {path}")
 
 
+def export_best_investment(results: dict, output_dir: str, filter_name: str):
+    """Export the Best Investment CSV combining learning + mastery scores"""
+    ranking = results.get('best_investment', [])
+
+    rows = []
+
+    # Header row
+    rows.append(['', '', 'Most Common Lane', 'Champion Name',
+                 'Low Mastery Win Rate', 'High Mastery Win Rate',
+                 'Learning Score', 'Mastery Score', 'Investment Score',
+                 '', '', ''])
+
+    for i, entry in enumerate(ranking):
+        lane = get_lane_display(entry.get('most_common_lane', ''))
+        champ = entry.get('champion', '')
+        low_wr = format_win_rate(entry.get('low_wr'))
+        high_wr = format_win_rate(entry.get('high_wr'))
+        learn = format_score(entry.get('learning_score'))
+        master = format_score(entry.get('mastery_score'))
+        invest = format_score(entry.get('investment_score'))
+
+        row = ['', '', lane, champ, low_wr, high_wr, learn, master, invest, '', '', '']
+
+        # Annotation columns
+        if i == 1:
+            row[10] = 'Investment Score'
+        elif i == 2:
+            row[10] = 'Formula:'
+            row[11] = 'Learn * 0.4 + Master * 0.6'
+        elif i == 3:
+            row[10] = 'If high:'
+            row[11] = 'Easy to pick up AND rewarding to master'
+        elif i == 5:
+            row[10] = 'Learn Score:'
+            row[11] = 'Low-mastery viability + small drop'
+        elif i == 6:
+            row[10] = 'Master Score:'
+            row[11] = 'High-mastery viability + big improvement'
+
+        rows.append(row)
+
+    path = os.path.join(output_dir, f'{filter_name} - Best Investment.csv')
+    with open(path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerows(rows)
+
+    logger.info(f"  Saved: {path}")
+
+
 def export_all_csvs(results: dict, output_dir: str, filter_name: str):
-    """Export all three CSVs for a filter"""
+    """Export all CSVs for a filter"""
     logger.info(f"\nExporting CSVs for: {filter_name}")
 
     os.makedirs(output_dir, exist_ok=True)
@@ -236,6 +333,7 @@ def export_all_csvs(results: dict, output_dir: str, filter_name: str):
     export_data_intro(results, output_dir, filter_name)
     export_easiest_to_learn(results, output_dir, filter_name)
     export_best_to_master(results, output_dir, filter_name)
+    export_best_investment(results, output_dir, filter_name)
 
 
 def main():
@@ -256,8 +354,15 @@ def main():
     logger.info("Starting CSV export...")
     create_output_dirs()
 
+    # Clean out old CSVs before writing new ones
+    old_csvs = glob.glob(os.path.join(args.output, '*.csv'))
+    if old_csvs:
+        for f in old_csvs:
+            os.remove(f)
+        logger.info(f"Removed {len(old_csvs)} old CSV file(s) from {args.output}")
+
     filters = list(ELO_FILTERS.keys()) if args.filter == 'all' else [args.filter]
-    csvs_per_filter = 3
+    csvs_per_filter = 4
     logger.info(f"Will generate up to {len(filters) * csvs_per_filter} CSV files across {len(filters)} filter(s)")
 
     for i, filter_name in enumerate(tqdm(filters, desc="Exporting CSVs", unit="filter"), 1):

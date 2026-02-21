@@ -1,6 +1,7 @@
 """
 Riot API client with rate limiting
 """
+import random
 import time
 import logging
 import requests
@@ -12,6 +13,14 @@ import threading
 import config
 
 logger = logging.getLogger(__name__)
+
+# Module-level shutdown event for interruptible sleeps
+_shutdown_event = threading.Event()
+
+
+def _interruptible_sleep(seconds: float):
+    """Sleep that can be interrupted by _shutdown_event."""
+    _shutdown_event.wait(timeout=seconds)
 
 
 class RateLimiter:
@@ -38,6 +47,9 @@ class RateLimiter:
         self.per_second_requests = deque()
         self.per_2min_requests = deque()
 
+        # Cooldown guard: timestamp until which the limiter is in 429 recovery
+        self._reset_until = 0.0
+
         # Thread safety
         self.lock = threading.Lock()
 
@@ -58,17 +70,36 @@ class RateLimiter:
         while self.per_2min_requests and self.per_2min_requests[0] < now - 120:
             self.per_2min_requests.popleft()
 
-    def reset(self):
-        """Backfill to capacity after a 429 to prevent burst"""
+    def reset(self, retry_after: float):
+        """Backfill with staggered timestamps anchored to wake-up time.
+
+        Entries are spread so that when threads wake after retry_after seconds,
+        the deques appear full with slots freeing up gradually — preventing
+        the burst-sleep-burst cascade.
+        """
         with self.lock:
             now = time.time()
+            wake_time = now + retry_after
+
+            # Guard: skip if another thread already reset for this window
+            if self._reset_until >= wake_time - 1.0:
+                return
+            self._reset_until = wake_time
+
             self.per_second_requests.clear()
             self.per_2min_requests.clear()
-            for _ in range(self.per_second_limit):
-                self.per_second_requests.append(now)
-            for _ in range(self.per_2min_limit):
-                self.per_2min_requests.append(now)
-            logger.debug(f"Rate limiter backfilled for {self.endpoint_group}/{self.region}")
+            # Stagger per-second entries so they expire gradually after wake_time
+            for i in range(self.per_second_limit):
+                t = wake_time - 1.0 + (i + 1) * (1.0 / self.per_second_limit)
+                self.per_second_requests.append(t)
+            # Stagger per-2min entries so they expire gradually after wake_time
+            for i in range(self.per_2min_limit):
+                t = wake_time - 120.0 + (i + 1) * (120.0 / self.per_2min_limit)
+                self.per_2min_requests.append(t)
+            logger.debug(
+                f"Rate limiter reset for {self.endpoint_group}/{self.region}, "
+                f"wake_time={retry_after:.1f}s from now"
+            )
 
     def wait_if_needed(self) -> float:
         """
@@ -80,27 +111,35 @@ class RateLimiter:
         wait_time = 0.0
         with self.lock:
             now = time.time()
-            self._clean_old_requests(now)
 
-            # Check per-second limit
-            if len(self.per_second_requests) >= self.per_second_limit:
-                oldest = self.per_second_requests[0]
-                wait_until = oldest + 1
-                if wait_until > now:
-                    wait_time = max(wait_time, wait_until - now + self.RATE_LIMIT_BUFFER)
+            # Cooldown path: if we're in a 429 recovery window, wait until wake time
+            if now < self._reset_until:
+                wait_time = self._reset_until - now + self.RATE_LIMIT_BUFFER
+                # Don't reserve a slot — the backfilled entries handle capacity
+            else:
+                self._clean_old_requests(now)
 
-            # Check per-2-minute limit
-            if len(self.per_2min_requests) >= self.per_2min_limit:
-                oldest = self.per_2min_requests[0]
-                wait_until = oldest + 120
-                if wait_until > now:
-                    wait_time = max(wait_time, wait_until - now + self.RATE_LIMIT_BUFFER)
+                # Check per-second limit
+                if len(self.per_second_requests) >= self.per_second_limit:
+                    idx = len(self.per_second_requests) - self.per_second_limit
+                    oldest = self.per_second_requests[idx]
+                    wait_until = oldest + 1
+                    if wait_until > now:
+                        wait_time = max(wait_time, wait_until - now + self.RATE_LIMIT_BUFFER)
 
-            # Reserve a slot with estimated completion time so other
-            # threads see accurate capacity while we sleep outside the lock
-            estimated_time = now + wait_time if wait_time > 0 else now
-            self.per_second_requests.append(estimated_time)
-            self.per_2min_requests.append(estimated_time)
+                # Check per-2-minute limit
+                if len(self.per_2min_requests) >= self.per_2min_limit:
+                    idx = len(self.per_2min_requests) - self.per_2min_limit
+                    oldest = self.per_2min_requests[idx]
+                    wait_until = oldest + 120
+                    if wait_until > now:
+                        wait_time = max(wait_time, wait_until - now + self.RATE_LIMIT_BUFFER)
+
+                # Reserve a slot with estimated completion time so other
+                # threads see accurate capacity while we sleep outside the lock
+                estimated_time = now + wait_time if wait_time > 0 else now
+                self.per_second_requests.append(estimated_time)
+                self.per_2min_requests.append(estimated_time)
 
         # Sleep OUTSIDE the lock — other threads can now check/sleep independently
         if wait_time > 0:
@@ -108,7 +147,7 @@ class RateLimiter:
                 f"Rate limit reached for {self.endpoint_group}/{self.region}, "
                 f"waiting {wait_time:.2f}s"
             )
-            time.sleep(wait_time)
+            _interruptible_sleep(wait_time)
 
         return wait_time
 
@@ -196,12 +235,14 @@ class RiotAPIClient:
                 # Handle rate limiting (429)
                 if response.status_code == 429:
                     retry_after = int(response.headers.get('Retry-After', 1))
+                    jitter = random.uniform(0, 2.0)
+                    sleep_time = retry_after + jitter
                     logger.warning(
                         f"Rate limited (429) for {endpoint_group}/{region}, "
-                        f"retrying after {retry_after}s"
+                        f"retrying after {sleep_time:.1f}s (retry_after={retry_after}+jitter={jitter:.1f})"
                     )
-                    limiter.reset()
-                    time.sleep(retry_after)
+                    limiter.reset(sleep_time)
+                    _interruptible_sleep(sleep_time)
                     continue
 
                 # Handle bad request (400) - permanent client error, no point retrying
@@ -223,7 +264,7 @@ class RiotAPIClient:
                         f"Server error ({response.status_code}) for {endpoint_group}/{region}, "
                         f"attempt {attempt + 1}/{max_retries}, retrying after {2 ** attempt}s"
                     )
-                    time.sleep(2 ** attempt)
+                    _interruptible_sleep(2 ** attempt)
                     continue
 
                 # Raise for other HTTP errors
@@ -247,7 +288,7 @@ class RiotAPIClient:
             except requests.exceptions.Timeout:
                 logger.warning(f"Request timeout, attempt {attempt + 1}/{max_retries}")
                 if attempt < max_retries - 1:
-                    time.sleep(2 ** attempt)  # Exponential backoff
+                    _interruptible_sleep(2 ** attempt)
                     continue
                 logger.error(f"Request timeout after {max_retries} attempts for {url}, skipping")
                 return None
@@ -255,7 +296,7 @@ class RiotAPIClient:
             except requests.exceptions.RequestException as e:
                 logger.error(f"Request failed: {e}")
                 if attempt < max_retries - 1:
-                    time.sleep(2 ** attempt)
+                    _interruptible_sleep(2 ** attempt)
                     continue
                 logger.error(f"Request failed after {max_retries} attempts for {url}, skipping")
                 return None

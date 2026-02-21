@@ -52,26 +52,25 @@ python3 src/collect_matches.py --target 1000000 --patches current
 python3 src/collect_mastery.py
 ```
 
-### Phase 2: Analysis
+### Phase 2: Analysis & Output
 
-Computes win rates by mastery bucket, per-champion stats, lane impact, and rankings. Outputs JSON to `output/analysis/`.
+The easiest way to run analysis, CSV export, and chart generation in one go:
 
 ```bash
+python3 src/run_all.py --filter emerald_plus
+```
+
+Or run each step individually:
+
+```bash
+# Compute stats → output/analysis/
 python3 src/analyze.py --filter all
-```
 
-### Phase 3: Output
-
-**Generate charts** (saved to `output/charts/`):
-
-```bash
-python3 src/visualize.py --filter all
-```
-
-**Export CSVs** matching the original study's spreadsheet format (saved to `output/csv/`):
-
-```bash
+# Export CSVs → output/csv/
 python3 src/export_csv.py --filter all
+
+# Generate charts → output/charts/
+python3 src/visualize.py --filter all
 ```
 
 ### Dev/Testing Mode
@@ -82,10 +81,46 @@ For testing with a development API key and a smaller dataset:
 python3 src/collect_players.py --dev-key --region NA --verbose
 python3 src/collect_matches.py --dev-key --region NA --target 1000 --verbose
 python3 src/collect_mastery.py --dev-key --region NA --verbose
-python3 src/analyze.py --filter emerald_plus
-python3 src/visualize.py --filter emerald_plus
-python3 src/export_csv.py --filter emerald_plus
+python3 src/run_all.py --filter emerald_plus
 ```
+
+## Rankings & Scoring
+
+The analysis produces three ranked lists per elo filter:
+
+### Easiest to Learn
+
+Ranked by **Learning Effectiveness Score** = `(Low WR% - 50) + (Low Ratio - 1) * 50`
+
+Answers: *"Can I pick this champion up and perform well immediately?"* Champions that are both viable at low mastery AND don't suffer much from inexperience score highest.
+
+| Tier | Score | Meaning |
+| ---- | ----- | ------- |
+| Safe Blind Pick | > 0 | Viable even with zero experience |
+| Low Risk | -5 to 0 | Small inexperience penalty |
+| Moderate | -15 to -5 | Expect a learning curve |
+| High Risk | -25 to -15 | Significant experience needed |
+| Avoid | < -25 | Major inexperience penalty |
+
+### Best to Master
+
+Ranked by **Mastery Effectiveness Score** = `(High WR% - 50) + (High Ratio - 1) * 50`
+
+Answers: *"Which champions reward the most from investing time to master them?"*
+
+| Tier | Score | Meaning |
+| ---- | ----- | ------- |
+| Exceptional Payoff | > 8 | Elite mastery reward + high WR |
+| High Payoff | 5 to 8 | Strong mastery improvement |
+| Moderate Payoff | 2 to 5 | Decent return on investment |
+| Low Payoff | 0 to 2 | Minimal mastery benefit |
+| Not Worth Mastering | < 0 | Still sub-50% WR after mastery |
+
+### Best Investment
+
+Ranked by **Investment Score** = `Learning Score * 0.4 + Mastery Score * 0.6`
+
+Answers: *"Which champions are the best total investment — easy to pick up AND rewarding to master?"* Weighted 60% toward mastery payoff since most players care more about the ceiling.
 
 ## CLI Options
 
@@ -119,11 +154,12 @@ This deletes the matching players, clears their `collect_players` and `collect_m
 | `--target N`               | Total match target (default: 1,000,000)   |
 | `--patches current\|last3` | Patch range to collect (default: current) |
 
-Analysis/visualization/export scripts support:
+`run_all.py` and analysis/visualization/export scripts support:
 
 | Flag       | Description                                               |
 | ---------- | --------------------------------------------------------- |
 | `--filter` | `emerald_plus`, `diamond_plus`, `diamond2_plus`, or `all` |
+| `--patches` | `current` or `last3` (analyze/run_all only, default: last3) |
 
 ## Elo Filters
 
@@ -149,6 +185,7 @@ src/
   analyze.py             # Compute all statistics from collected data
   visualize.py           # Generate charts (matplotlib/seaborn)
   export_csv.py          # Export CSVs matching original study format
+  run_all.py             # Run full pipeline (analyze + export + visualize)
 data/                    # SQLite DB (gitignored)
 output/
   analysis/              # JSON results

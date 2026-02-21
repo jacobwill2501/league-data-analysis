@@ -195,6 +195,23 @@ def chart_lane_impact(results: dict, output_dir: str, filter_name: str):
     logger.info(f"  Saved: {path}")
 
 
+LEARNING_TIER_COLORS = {
+    'Safe Blind Pick': '#2ecc71',
+    'Low Risk': '#82e0aa',
+    'Moderate': '#f39c12',
+    'High Risk': '#e67e22',
+    'Avoid': '#e74c3c',
+}
+
+MASTERY_TIER_COLORS = {
+    'Exceptional Payoff': '#2ecc71',
+    'High Payoff': '#82e0aa',
+    'Moderate Payoff': '#f39c12',
+    'Low Payoff': '#e67e22',
+    'Not Worth Mastering': '#e74c3c',
+}
+
+
 def chart_easiest_to_learn(results: dict, output_dir: str, filter_name: str):
     """Generate top 10 easiest to learn horizontal bar chart"""
     ranking = results.get('easiest_to_learn', [])
@@ -211,23 +228,27 @@ def chart_easiest_to_learn(results: dict, output_dir: str, filter_name: str):
     for entry in top10:
         lane = LANE_DISPLAY_NAMES.get(entry.get('most_common_lane', ''),
                                        entry.get('most_common_lane', ''))
-        labels.append(f"{entry['champion']} ({lane})")
+        tier = entry.get('learning_tier', '')
+        labels.append(f"{entry['champion']} ({lane}) [{tier}]")
 
-    ratios = [entry['low_ratio'] for entry in top10]
+    scores = [entry['learning_score'] for entry in top10]
 
-    colors = [COLORS['high'] if r >= 0.90 else COLORS['medium'] if r >= 0.85 else COLORS['low']
-              for r in ratios]
+    # Color by tier
+    colors = [LEARNING_TIER_COLORS.get(entry.get('learning_tier', ''), COLORS['medium'])
+              for entry in top10]
 
-    bars = ax.barh(labels, ratios, color=colors, edgecolor='white')
+    bars = ax.barh(labels, scores, color=colors, edgecolor='white')
 
-    # Add ratio labels
-    for bar, ratio in zip(bars, ratios):
-        ax.text(bar.get_width() + 0.002, bar.get_y() + bar.get_height() / 2,
-                f'{ratio:.2f}', ha='left', va='center', fontsize=10)
+    # Add score labels
+    for bar, score in zip(bars, scores):
+        offset = 0.3 if score >= 0 else -0.3
+        ha = 'left' if score >= 0 else 'right'
+        ax.text(bar.get_width() + offset, bar.get_y() + bar.get_height() / 2,
+                f'{score:.1f}', ha=ha, va='center', fontsize=10)
 
     ax.set_title(f'Top 10 Easiest to Learn ({filter_name})', fontsize=14, pad=15)
-    ax.set_xlabel('Low Mastery Ratio (higher = easier to learn)', fontsize=11)
-    ax.axvline(x=1.0, color=COLORS['reference'], linestyle='--', linewidth=0.8)
+    ax.set_xlabel('Learning Effectiveness Score (higher = viable + easy to learn)', fontsize=11)
+    ax.axvline(x=0, color=COLORS['reference'], linestyle='--', linewidth=0.8)
 
     plt.tight_layout()
     path = os.path.join(output_dir, f'{filter_name}_easiest_to_learn.png')
@@ -237,7 +258,7 @@ def chart_easiest_to_learn(results: dict, output_dir: str, filter_name: str):
 
 
 def chart_best_to_master(results: dict, output_dir: str, filter_name: str):
-    """Generate top 10 best to master horizontal bar chart"""
+    """Generate top 10 best to master horizontal bar chart using Mastery Effectiveness Score"""
     ranking = results.get('best_to_master', [])
     if not ranking:
         logger.warning("No best to master data, skipping")
@@ -252,25 +273,80 @@ def chart_best_to_master(results: dict, output_dir: str, filter_name: str):
     for entry in top10:
         lane = LANE_DISPLAY_NAMES.get(entry.get('most_common_lane', ''),
                                        entry.get('most_common_lane', ''))
-        labels.append(f"{entry['champion']} ({lane})")
+        tier = entry.get('mastery_tier', '')
+        labels.append(f"{entry['champion']} ({lane}) [{tier}]")
 
-    ratios = [entry['high_ratio'] for entry in top10]
+    scores = [entry['mastery_score'] for entry in top10]
 
-    colors = [COLORS['high'] if r >= 1.07 else COLORS['medium'] if r >= 1.04 else COLORS['low']
-              for r in ratios]
+    # Color by tier
+    colors = [MASTERY_TIER_COLORS.get(entry.get('mastery_tier', ''), COLORS['medium'])
+              for entry in top10]
 
-    bars = ax.barh(labels, ratios, color=colors, edgecolor='white')
+    bars = ax.barh(labels, scores, color=colors, edgecolor='white')
 
-    for bar, ratio in zip(bars, ratios):
-        ax.text(bar.get_width() + 0.002, bar.get_y() + bar.get_height() / 2,
-                f'{ratio:.2f}', ha='left', va='center', fontsize=10)
+    for bar, score in zip(bars, scores):
+        offset = 0.3 if score >= 0 else -0.3
+        ha = 'left' if score >= 0 else 'right'
+        ax.text(bar.get_width() + offset, bar.get_y() + bar.get_height() / 2,
+                f'{score:.1f}', ha=ha, va='center', fontsize=10)
 
     ax.set_title(f'Top 10 Best to Master ({filter_name})', fontsize=14, pad=15)
-    ax.set_xlabel('High Mastery Ratio (higher = more reward for mastery)', fontsize=11)
-    ax.axvline(x=1.0, color=COLORS['reference'], linestyle='--', linewidth=0.8)
+    ax.set_xlabel('Mastery Effectiveness Score (higher = viable + rewarding)', fontsize=11)
+    ax.axvline(x=0, color=COLORS['reference'], linestyle='--', linewidth=0.8)
 
     plt.tight_layout()
     path = os.path.join(output_dir, f'{filter_name}_best_to_master.png')
+    fig.savefig(path, dpi=CHART_DPI)
+    plt.close(fig)
+    logger.info(f"  Saved: {path}")
+
+
+def chart_best_investment(results: dict, output_dir: str, filter_name: str):
+    """Generate top 10 best investment horizontal bar chart"""
+    ranking = results.get('best_investment', [])
+    if not ranking:
+        logger.warning("No best investment data, skipping")
+        return
+
+    top10 = ranking[:10]
+    top10.reverse()
+
+    fig, ax = plt.subplots(figsize=CHART_FIGSIZE_MEDIUM)
+
+    labels = []
+    for entry in top10:
+        lane = LANE_DISPLAY_NAMES.get(entry.get('most_common_lane', ''),
+                                       entry.get('most_common_lane', ''))
+        labels.append(f"{entry['champion']} ({lane})")
+
+    scores = [entry['investment_score'] for entry in top10]
+
+    # Color green if both low and high WR >= 50%, orange if only one, red if neither
+    def invest_color(entry):
+        low_ok = (entry.get('low_wr') or 0) >= 0.50
+        high_ok = (entry.get('high_wr') or 0) >= 0.50
+        if low_ok and high_ok:
+            return COLORS['high']
+        if high_ok:
+            return COLORS['medium']
+        return COLORS['low']
+
+    colors = [invest_color(entry) for entry in top10]
+
+    bars = ax.barh(labels, scores, color=colors, edgecolor='white')
+
+    for bar, score in zip(bars, scores):
+        offset = 0.3 if score >= 0 else -0.3
+        ha = 'left' if score >= 0 else 'right'
+        ax.text(bar.get_width() + offset, bar.get_y() + bar.get_height() / 2,
+                f'{score:.1f}', ha=ha, va='center', fontsize=10)
+
+    ax.set_title(f'Top 10 Best Investment ({filter_name})', fontsize=14, pad=15)
+    ax.set_xlabel('Investment Score (Learn * 0.4 + Master * 0.6)', fontsize=11)
+    ax.axvline(x=0, color=COLORS['reference'], linestyle='--', linewidth=0.8)
+
+    plt.tight_layout()
+    path = os.path.join(output_dir, f'{filter_name}_best_investment.png')
     fig.savefig(path, dpi=CHART_DPI)
     plt.close(fig)
     logger.info(f"  Saved: {path}")
@@ -290,6 +366,7 @@ def generate_all_charts(results: dict, output_dir: str, filter_name: str):
     chart_lane_impact(results, output_dir, filter_name)
     chart_easiest_to_learn(results, output_dir, filter_name)
     chart_best_to_master(results, output_dir, filter_name)
+    chart_best_investment(results, output_dir, filter_name)
 
 
 def main():
@@ -311,7 +388,7 @@ def main():
     create_output_dirs()
 
     filters = list(ELO_FILTERS.keys()) if args.filter == 'all' else [args.filter]
-    charts_per_filter = 5
+    charts_per_filter = 6
     logger.info(f"Will generate up to {len(filters) * charts_per_filter} charts across {len(filters)} filter(s)")
 
     for i, filter_name in enumerate(tqdm(filters, desc="Generating charts", unit="filter"), 1):

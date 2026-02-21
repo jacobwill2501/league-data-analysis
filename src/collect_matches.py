@@ -23,7 +23,7 @@ from config import (REGIONS, RANKED_SOLO_QUEUE_ID, MINIMUM_GAME_DURATION,
                     DEFAULT_MATCH_TARGET, MATCH_TARGET_PRESETS,
                     TIER_ALLOCATION, APEX_TIERS)
 from db import Database
-from riot_api import RiotAPIClient
+from riot_api import RiotAPIClient, _shutdown_event
 from utils import setup_logging, format_duration, format_number, PatchManager
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,7 @@ def _signal_handler(sig, frame):
     global _shutdown
     logger.info("\nShutdown requested, finishing current task...")
     _shutdown = True
+    _shutdown_event.set()  # Wake up any sleeping threads immediately
 
 
 signal.signal(signal.SIGINT, _signal_handler)
