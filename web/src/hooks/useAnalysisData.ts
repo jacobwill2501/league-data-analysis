@@ -84,10 +84,11 @@ export function useAnalysisData(elo: EloFilter) {
     setLoading(true)
     setError(null)
 
+    const controller = new AbortController()
     const url = `${BASE_URL}data/${elo}_results.json`
-    fetch(url)
+    fetch(url, { signal: controller.signal })
       .then(res => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        if (!res.ok) throw new Error(`HTTP ${res.status} — ${url}`)
         return res.json() as Promise<AnalysisData>
       })
       .then(raw => {
@@ -97,9 +98,12 @@ export function useAnalysisData(elo: EloFilter) {
         setLoading(false)
       })
       .catch(err => {
+        if ((err as Error).name === 'AbortError') return
         setError(String(err))
         setLoading(false)
       })
+
+    return () => controller.abort()
   }, [elo])
 
   return { data, loading, error }
