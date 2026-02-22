@@ -36,14 +36,6 @@ const masteryTierCol: ColumnDef<ChampionStat> = {
   enableSorting: true,
 }
 
-const difficultyCol: ColumnDef<ChampionStat> = {
-  id: 'difficulty',
-  header: 'Difficulty',
-  accessorKey: 'difficulty_label',
-  cell: info => info.getValue<string | null>() ?? '—',
-  enableSorting: true,
-}
-
 const nullLastSortingFn = <T extends object>(
   rowA: import('@tanstack/react-table').Row<T>,
   rowB: import('@tanstack/react-table').Row<T>,
