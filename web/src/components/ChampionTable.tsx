@@ -26,9 +26,9 @@ import {
   getBestToMasterCols,
   getBestInvestmentCols,
   getAllStatsCols,
-  getDynamicEasiestCols,
-  getDynamicMasterCols,
-  getDynamicInvestmentCols,
+  getBiasEasiestCols,
+  getBiasMasterCols,
+  getBiasInvestmentCols,
   getGamesTo50Cols,
   VIEW_CONFIGS,
 } from '../utils/columns'
@@ -265,7 +265,7 @@ function SortableTable<T extends object>({ data, columns, view }: TableProps<T>)
 
 interface ChampionTableProps {
   data: ChampionStat[]
-  view: Exclude<ViewMode, 'games_to_50'>
+  view: Exclude<ViewMode, 'games_to_50' | 'mastery_curve'>
 }
 
 interface G50TableProps {
@@ -277,9 +277,9 @@ export function ChampionTable({ data, view }: ChampionTableProps) {
     view === 'easiest_to_learn'  ? getEasiestToLearnCols()
     : view === 'best_to_master'  ? getBestToMasterCols()
     : view === 'best_investment' ? getBestInvestmentCols()
-    : view === 'dynamic_easiest' ? getDynamicEasiestCols()
-    : view === 'dynamic_master'  ? getDynamicMasterCols()
-    : view === 'dynamic_investment' ? getDynamicInvestmentCols()
+    : view === 'bias_easiest'    ? getBiasEasiestCols()
+    : view === 'bias_master'     ? getBiasMasterCols()
+    : view === 'bias_investment' ? getBiasInvestmentCols()
     : getAllStatsCols()
 
   return <SortableTable data={data} columns={cols as ColumnDef<ChampionStat>[]} view={view} />

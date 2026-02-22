@@ -60,13 +60,10 @@ export function getEasiestToLearnCols(): ColumnDef<ChampionStat>[] {
   return [
     championCol,
     laneCol,
-    learningTierCol,
-    { id: 'learning_score', header: 'Learning Score', accessorKey: 'learning_score', cell: i => fmtScore(i.getValue<number | null>()), enableSorting: true },
-    { id: 'low_wr', header: 'Low WR', accessorKey: 'low_wr', cell: i => fmtPct(i.getValue<number | null>()), enableSorting: true },
-    { id: 'medium_wr', header: 'Medium WR', accessorKey: 'medium_wr', cell: i => fmtPct(i.getValue<number | null>()), enableSorting: true },
-    { id: 'low_ratio', header: 'Low Ratio', accessorKey: 'low_ratio', cell: i => fmtRatio(i.getValue<number | null>()), enableSorting: true },
-    { id: 'low_delta', header: 'Low Δ', accessorKey: 'low_delta', cell: i => fmtDelta(i.getValue<number | null>()), enableSorting: true },
-    { id: 'low_games', header: 'Low Games', accessorKey: 'low_games', cell: i => fmtGames(i.getValue<number | null>()), enableSorting: true },
+    { id: 'status', header: 'Status', accessorKey: 'games_to_50_status', cell: info => info.getValue<string | null>() ?? '—', enableSorting: true },
+    estGamesChampCol,
+    { id: 'mastery_threshold', header: 'Mastery Threshold', accessorKey: 'mastery_threshold', cell: info => fmtThreshold(info.getValue<number | null>()), enableSorting: true },
+    { id: 'starting_winrate', header: 'Starting WR', accessorKey: 'starting_winrate', cell: info => fmtPct(info.getValue<number | null>()), enableSorting: true },
   ]
 }
 
@@ -118,9 +115,9 @@ export function getAllStatsCols(): ColumnDef<ChampionStat>[] {
   ]
 }
 
-// ── Dynamic view columns ──────────────────────────────────────────────────────
+// ── Bias view columns ──────────────────────────────────────────────────────────
 
-export function getDynamicEasiestCols(): ColumnDef<ChampionStat>[] {
+export function getBiasEasiestCols(): ColumnDef<ChampionStat>[] {
   return [
     championCol,
     laneCol,
@@ -135,7 +132,7 @@ export function getDynamicEasiestCols(): ColumnDef<ChampionStat>[] {
   ]
 }
 
-export function getDynamicMasterCols(): ColumnDef<ChampionStat>[] {
+export function getBiasMasterCols(): ColumnDef<ChampionStat>[] {
   return [
     championCol,
     laneCol,
@@ -150,7 +147,7 @@ export function getDynamicMasterCols(): ColumnDef<ChampionStat>[] {
   ]
 }
 
-export function getDynamicInvestmentCols(): ColumnDef<ChampionStat>[] {
+export function getBiasInvestmentCols(): ColumnDef<ChampionStat>[] {
   return [
     championCol,
     laneCol,
@@ -220,13 +217,14 @@ export interface ViewConfig {
   label: string
   defaultSort: { id: string; desc: boolean }
   isG50?: boolean
-  isDynamic?: boolean
+  isBias?: boolean
+  isMasteryCurve?: boolean
 }
 
 export const VIEW_CONFIGS: Record<ViewMode, ViewConfig> = {
   easiest_to_learn: {
     label: 'Easiest to Learn',
-    defaultSort: { id: 'learning_score', desc: true },
+    defaultSort: { id: 'estimated_games', desc: false },
   },
   best_to_master: {
     label: 'Best to Master',
@@ -240,24 +238,29 @@ export const VIEW_CONFIGS: Record<ViewMode, ViewConfig> = {
     label: 'All Stats',
     defaultSort: { id: 'champion', desc: false },
   },
-  dynamic_easiest: {
-    label: 'Dynamic Easiest to Learn',
+  bias_easiest: {
+    label: 'Bias Easiest to Learn',
     defaultSort: { id: 'learning_score', desc: true },
-    isDynamic: true,
+    isBias: true,
   },
-  dynamic_master: {
-    label: 'Dynamic Best to Master',
+  bias_master: {
+    label: 'Bias Best to Master',
     defaultSort: { id: 'mastery_score', desc: true },
-    isDynamic: true,
+    isBias: true,
   },
-  dynamic_investment: {
-    label: 'Dynamic Best Investment',
+  bias_investment: {
+    label: 'Bias Best Investment',
     defaultSort: { id: 'investment_score', desc: true },
-    isDynamic: true,
+    isBias: true,
   },
   games_to_50: {
     label: 'Games to 50% WR',
     defaultSort: { id: 'estimated_games', desc: false },
     isG50: true,
+  },
+  mastery_curve: {
+    label: 'Mastery Curve',
+    defaultSort: { id: 'champion', desc: false },
+    isMasteryCurve: true,
   },
 }

@@ -382,9 +382,9 @@ def export_games_to_50_winrate(results: dict, output_dir: str, filter_name: str)
     logger.info(f"  Saved: {path}")
 
 
-def export_dynamic_easiest_to_learn(results: dict, output_dir: str, filter_name: str):
-    """Export Dynamic Easiest to Learn CSV using per-champion mastery thresholds"""
-    ranking = results.get('dynamic_easiest_to_learn', [])
+def export_bias_easiest_to_learn(results: dict, output_dir: str, filter_name: str):
+    """Export Bias Easiest to Learn CSV using per-champion mastery thresholds"""
+    ranking = results.get('bias_easiest_to_learn', [])
 
     rows = []
     rows.append(['', '', 'Most Common Lane', 'Champion Name',
@@ -395,7 +395,7 @@ def export_dynamic_easiest_to_learn(results: dict, output_dir: str, filter_name:
     for entry in ranking:
         lane = get_lane_display(entry.get('most_common_lane', ''))
         champ = entry.get('champion', '')
-        status = entry.get('dynamic_status', '')
+        status = entry.get('bias_status', '')
         difficulty = entry.get('difficulty_label', '') or ''
         est_games = entry.get('estimated_games')
         games_str = str(est_games) if est_games is not None else 'N/A'
@@ -417,7 +417,7 @@ def export_dynamic_easiest_to_learn(results: dict, output_dir: str, filter_name:
 
         rows.append(['', '', lane, champ, low_wr, med_wr, ratio, low_delta, score, tier, games_str, difficulty])
 
-    path = os.path.join(output_dir, f'{filter_name} - Dynamic Easiest to Learn.csv')
+    path = os.path.join(output_dir, f'{filter_name} - Bias Easiest to Learn.csv')
     with open(path, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerows(rows)
@@ -425,9 +425,9 @@ def export_dynamic_easiest_to_learn(results: dict, output_dir: str, filter_name:
     logger.info(f"  Saved: {path}")
 
 
-def export_dynamic_best_to_master(results: dict, output_dir: str, filter_name: str):
-    """Export Dynamic Best to Master CSV using per-champion mastery thresholds"""
-    ranking = results.get('dynamic_best_to_master', [])
+def export_bias_best_to_master(results: dict, output_dir: str, filter_name: str):
+    """Export Bias Best to Master CSV using per-champion mastery thresholds"""
+    ranking = results.get('bias_best_to_master', [])
 
     rows = []
     rows.append(['', '', 'Most Common Lane', 'Champion Name',
@@ -451,7 +451,7 @@ def export_dynamic_best_to_master(results: dict, output_dir: str, filter_name: s
 
         rows.append(['', '', lane, champ, med_wr, high_wr, ratio, delta, score, tier, games_str, difficulty])
 
-    path = os.path.join(output_dir, f'{filter_name} - Dynamic Best to Master.csv')
+    path = os.path.join(output_dir, f'{filter_name} - Bias Best to Master.csv')
     with open(path, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerows(rows)
@@ -459,9 +459,9 @@ def export_dynamic_best_to_master(results: dict, output_dir: str, filter_name: s
     logger.info(f"  Saved: {path}")
 
 
-def export_dynamic_best_investment(results: dict, output_dir: str, filter_name: str):
-    """Export Dynamic Best Investment CSV using per-champion mastery thresholds"""
-    ranking = results.get('dynamic_best_investment', [])
+def export_bias_best_investment(results: dict, output_dir: str, filter_name: str):
+    """Export Bias Best Investment CSV using per-champion mastery thresholds"""
+    ranking = results.get('bias_best_investment', [])
 
     rows = []
     rows.append(['', '', 'Most Common Lane', 'Champion Name',
@@ -484,7 +484,7 @@ def export_dynamic_best_investment(results: dict, output_dir: str, filter_name: 
 
         rows.append(['', '', lane, champ, low_wr, high_wr, learn, master, invest, games_str, difficulty])
 
-    path = os.path.join(output_dir, f'{filter_name} - Dynamic Best Investment.csv')
+    path = os.path.join(output_dir, f'{filter_name} - Bias Best Investment.csv')
     with open(path, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerows(rows)
@@ -503,9 +503,9 @@ def export_all_csvs(results: dict, output_dir: str, filter_name: str):
     export_best_to_master(results, output_dir, filter_name)
     export_best_investment(results, output_dir, filter_name)
     export_games_to_50_winrate(results, output_dir, filter_name)
-    export_dynamic_easiest_to_learn(results, output_dir, filter_name)
-    export_dynamic_best_to_master(results, output_dir, filter_name)
-    export_dynamic_best_investment(results, output_dir, filter_name)
+    export_bias_easiest_to_learn(results, output_dir, filter_name)
+    export_bias_best_to_master(results, output_dir, filter_name)
+    export_bias_best_investment(results, output_dir, filter_name)
 
 
 def main():

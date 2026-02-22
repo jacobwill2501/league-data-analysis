@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AnalysisData, ChampionStat, EloFilter, GameTo50Entry } from '../types/analysis'
+import type { AnalysisData, ChampionStat, EloFilter, GameTo50Entry, MasteryChampionCurve } from '../types/analysis'
 
 export interface ParsedData {
   champions: ChampionStat[]
-  dynamicChampions: ChampionStat[]
-  dynamicEasiest: ChampionStat[]
-  dynamicMaster: ChampionStat[]
-  dynamicInvestment: ChampionStat[]
+  biasChampions: ChampionStat[]
+  biasEasiest: ChampionStat[]
+  biasMaster: ChampionStat[]
+  biasInvestment: ChampionStat[]
   gameTo50: GameTo50Entry[]
   easiestToLearn: ChampionStat[]
   bestToMaster: ChampionStat[]
   bestInvestment: ChampionStat[]
+  masteryChampionCurves: Record<string, MasteryChampionCurve>
 }
 
 const BASE_URL = import.meta.env.BASE_URL
@@ -19,19 +20,20 @@ function parseData(raw: AnalysisData): ParsedData {
   const champions: ChampionStat[] = Object.entries(raw.champion_stats).map(
     ([name, stat]) => ({ champion: name, ...stat })
   )
-  const dynamicChampions: ChampionStat[] = Object.entries(raw.dynamic_champion_stats ?? {}).map(
+  const biasChampions: ChampionStat[] = Object.entries(raw.bias_champion_stats ?? {}).map(
     ([name, stat]) => ({ champion: name, ...stat })
   )
   return {
     champions,
-    dynamicChampions,
-    dynamicEasiest: raw.dynamic_easiest_to_learn ?? [],
-    dynamicMaster: raw.dynamic_best_to_master ?? [],
-    dynamicInvestment: raw.dynamic_best_investment ?? [],
+    biasChampions,
+    biasEasiest: raw.bias_easiest_to_learn ?? [],
+    biasMaster: raw.bias_best_to_master ?? [],
+    biasInvestment: raw.bias_best_investment ?? [],
     gameTo50: raw.games_to_50_winrate ?? [],
     easiestToLearn: raw.easiest_to_learn ?? [],
     bestToMaster: raw.best_to_master ?? [],
     bestInvestment: raw.best_investment ?? [],
+    masteryChampionCurves: raw.mastery_curves ?? {},
   }
 }
 

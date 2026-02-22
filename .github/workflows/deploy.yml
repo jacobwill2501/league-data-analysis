@@ -31,7 +31,9 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - name: Copy analysis JSON to web/public/data/
-        run: cp output/analysis/*.json web/public/data/
+        run: |
+          mkdir -p web/public/data
+          cp output/analysis/*.json web/public/data/
 
       - name: Install dependencies
         working-directory: web

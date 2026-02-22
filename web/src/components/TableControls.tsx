@@ -11,11 +11,11 @@ import { VIEW_CONFIGS } from '../utils/columns'
 const VIEW_GROUPS = [
   {
     label: 'Standard',
-    views: ['easiest_to_learn', 'best_to_master', 'best_investment', 'all_stats'] as ViewMode[],
+    views: ['easiest_to_learn', 'best_to_master', 'best_investment', 'all_stats', 'mastery_curve'] as ViewMode[],
   },
   {
-    label: 'Dynamic (per-champion thresholds)',
-    views: ['dynamic_easiest', 'dynamic_master', 'dynamic_investment', 'games_to_50'] as ViewMode[],
+    label: 'Bias (per-champion thresholds)',
+    views: ['bias_easiest', 'bias_master', 'bias_investment', 'games_to_50'] as ViewMode[],
   },
 ]
 

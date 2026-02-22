@@ -17,11 +17,14 @@ export interface ChampionStat {
   learning_tier: string | null
   mastery_tier: string | null
   most_common_lane: string | null
-  // Dynamic fields (present in dynamic_champion_stats rows)
-  dynamic_status?: string | null
+  // Bias fields (present in bias_champion_stats rows)
+  bias_status?: string | null
   mastery_threshold?: number | null
   estimated_games?: number | null
   difficulty_label?: string | null
+  // Games-to-50 merged fields (present in easiest_to_learn rows)
+  games_to_50_status?: string | null
+  starting_winrate?: number | null
 }
 
 export interface GameTo50Entry {
@@ -33,18 +36,32 @@ export interface GameTo50Entry {
   status: string
 }
 
+export interface MasteryInterval {
+  label: string
+  min: number
+  max: number | null
+  win_rate: number
+  games: number
+}
+
+export interface MasteryChampionCurve {
+  lane: string | null
+  intervals: MasteryInterval[]
+}
+
 export interface AnalysisData {
   filter: string
   filter_description: string
   champion_stats: Record<string, Omit<ChampionStat, 'champion'>>
-  dynamic_champion_stats: Record<string, Omit<ChampionStat, 'champion'>>
+  bias_champion_stats: Record<string, Omit<ChampionStat, 'champion'>>
   games_to_50_winrate: GameTo50Entry[]
-  dynamic_easiest_to_learn: ChampionStat[]
-  dynamic_best_to_master: ChampionStat[]
-  dynamic_best_investment: ChampionStat[]
+  bias_easiest_to_learn: ChampionStat[]
+  bias_best_to_master: ChampionStat[]
+  bias_best_investment: ChampionStat[]
   easiest_to_learn: ChampionStat[]
   best_to_master: ChampionStat[]
   best_investment: ChampionStat[]
+  mastery_curves: Record<string, MasteryChampionCurve>
 }
 
 export type EloFilter = 'emerald_plus' | 'diamond_plus' | 'diamond2_plus'
@@ -54,7 +71,8 @@ export type ViewMode =
   | 'best_to_master'
   | 'best_investment'
   | 'all_stats'
-  | 'dynamic_easiest'
-  | 'dynamic_master'
-  | 'dynamic_investment'
+  | 'bias_easiest'
+  | 'bias_master'
+  | 'bias_investment'
   | 'games_to_50'
+  | 'mastery_curve'

@@ -10,6 +10,7 @@ import { useThemeMode } from './hooks/useTheme'
 import { Header } from './components/Header'
 import { TableControls } from './components/TableControls'
 import { ChampionTable, G50Table } from './components/ChampionTable'
+import { MasteryCurveView } from './components/MasteryCurveView'
 
 const LANE_MAP: Record<string, string> = {
   TOP: 'Top',
@@ -41,14 +42,14 @@ const MASTERY_TIERS = [
 ]
 
 function getTierOptions(view: ViewMode): string[] {
-  if (['easiest_to_learn', 'dynamic_easiest'].includes(view)) return LEARNING_TIERS
-  if (['best_to_master', 'dynamic_master'].includes(view)) return MASTERY_TIERS
+  if (['easiest_to_learn', 'bias_easiest'].includes(view)) return LEARNING_TIERS
+  if (['best_to_master', 'bias_master'].includes(view)) return MASTERY_TIERS
   return []
 }
 
 function getTierField(view: ViewMode): keyof ChampionStat | null {
-  if (['easiest_to_learn', 'dynamic_easiest'].includes(view)) return 'learning_tier'
-  if (['best_to_master', 'dynamic_master'].includes(view)) return 'mastery_tier'
+  if (['easiest_to_learn', 'bias_easiest'].includes(view)) return 'learning_tier'
+  if (['best_to_master', 'bias_master'].includes(view)) return 'mastery_tier'
   return null
 }
 
@@ -88,14 +89,15 @@ export function App() {
   const sourceRows = useMemo((): ChampionStat[] => {
     if (!data) return []
     switch (view) {
-      case 'easiest_to_learn': return data.easiestToLearn
-      case 'best_to_master':   return data.bestToMaster
-      case 'best_investment':  return data.bestInvestment
-      case 'all_stats':        return data.champions
-      case 'dynamic_easiest':  return data.dynamicEasiest
-      case 'dynamic_master':   return data.dynamicMaster
-      case 'dynamic_investment': return data.dynamicInvestment
-      default:                 return data.champions
+      case 'easiest_to_learn':  return data.easiestToLearn
+      case 'best_to_master':    return data.bestToMaster
+      case 'best_investment':   return data.bestInvestment
+      case 'all_stats':         return data.champions
+      case 'bias_easiest':      return data.biasEasiest
+      case 'bias_master':       return data.biasMaster
+      case 'bias_investment':   return data.biasInvestment
+      case 'mastery_curve':     return []
+      default:                  return data.champions
     }
   }, [data, view])
 
@@ -105,7 +107,7 @@ export function App() {
   }, [data, view])
 
   const filteredChampions = useMemo((): ChampionStat[] => {
-    if (view === 'games_to_50') return []
+    if (view === 'games_to_50' || view === 'mastery_curve') return []
     let rows = sourceRows
 
     if (search.trim()) {
@@ -142,8 +144,9 @@ export function App() {
   }, [sourceG50, search, lane, view])
 
   const isG50 = view === 'games_to_50'
-  const rowCount = isG50 ? filteredG50.length : filteredChampions.length
-  const totalCount = isG50 ? sourceG50.length : sourceRows.length
+  const isMasteryCurve = view === 'mastery_curve'
+  const rowCount = isG50 ? filteredG50.length : isMasteryCurve ? 0 : filteredChampions.length
+  const totalCount = isG50 ? sourceG50.length : isMasteryCurve ? 0 : sourceRows.length
 
   return (
     <ThemeProvider theme={theme}>
@@ -186,10 +189,12 @@ export function App() {
           {!loading && !error && data && (
             isG50
               ? <G50Table data={filteredG50} />
-              : <ChampionTable
-                  data={filteredChampions}
-                  view={view as Exclude<ViewMode, 'games_to_50'>}
-                />
+              : isMasteryCurve
+                ? <MasteryCurveView masteryChampionCurves={data.masteryChampionCurves} />
+                : <ChampionTable
+                    data={filteredChampions}
+                    view={view as Exclude<ViewMode, 'games_to_50' | 'mastery_curve'>}
+                  />
           )}
         </Box>
       </Box>

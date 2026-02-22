@@ -519,8 +519,72 @@ class MasteryAnalyzer:
 
         return results
 
-    def compute_dynamic_champion_stats(self, games_to_50: List[Dict]) -> Dict:
-        """Compute per-champion statistics using dynamic per-champion mastery buckets.
+    def compute_mastery_curves_by_champion(self) -> Dict:
+        """Compute per-champion win rate at each mastery interval.
+
+        Returns a dict keyed by champion name with lane and a list of interval
+        stats (only intervals meeting MINIMUM_SAMPLE_SIZE).
+        """
+        logger.info("Computing mastery curves by champion...")
+
+        champ_interval = defaultdict(lambda: defaultdict(lambda: {'wins': 0, 'games': 0}))
+        champ_lanes = defaultdict(lambda: defaultdict(int))
+
+        for p in self.participants:
+            key = (p['puuid'], p['champion_id'])
+            if key not in self.mastery_data:
+                continue
+
+            champ = p['champion_name']
+            points = self.mastery_data[key]['mastery_points']
+
+            lane = p.get('individual_position')
+            if lane:
+                champ_lanes[champ][lane] += 1
+
+            for idx, (lo, hi) in enumerate(WIN_RATE_INTERVALS):
+                if lo <= points < hi:
+                    champ_interval[champ][idx]['games'] += 1
+                    if p['win']:
+                        champ_interval[champ][idx]['wins'] += 1
+                    break
+
+        results = {}
+
+        for champ, intervals in champ_interval.items():
+            lane_counts = champ_lanes.get(champ, {})
+            most_common_lane = max(lane_counts, key=lane_counts.get) if lane_counts else None
+
+            interval_list = []
+            for idx, (lo, hi) in enumerate(WIN_RATE_INTERVALS):
+                s = intervals.get(idx)
+                if s is None or s['games'] < MINIMUM_SAMPLE_SIZE:
+                    continue
+
+                if hi == float('inf'):
+                    label = f"{lo // 1000}k+"
+                else:
+                    label = f"{lo // 1000}k-{hi // 1000}k"
+
+                interval_list.append({
+                    'label': label,
+                    'min': lo,
+                    'max': hi if hi != float('inf') else None,
+                    'win_rate': s['wins'] / s['games'],
+                    'games': s['games'],
+                })
+
+            if interval_list:
+                results[champ] = {
+                    'lane': most_common_lane,
+                    'intervals': interval_list,
+                }
+
+        logger.info(f"  Champions with mastery curve data: {len(results)}")
+        return results
+
+    def compute_bias_champion_stats(self, games_to_50: List[Dict]) -> Dict:
+        """Compute per-champion statistics using bias (per-champion) mastery buckets.
 
         Bucket boundaries are derived from games_to_50 thresholds:
           - 'crosses 50%'     → Low: 0→threshold, Medium: threshold→100k, High: 100k+
@@ -528,7 +592,7 @@ class MasteryAnalyzer:
           - 'never reaches 50%' → Low: 0→100k, (no Medium), High: 100k+
           - 'low data'        → skip entirely
         """
-        logger.info("Computing dynamic per-champion statistics...")
+        logger.info("Computing bias per-champion statistics...")
 
         HIGH_THRESHOLD = MASTERY_BUCKETS['medium']['max']  # 100_000
 
@@ -645,7 +709,7 @@ class MasteryAnalyzer:
                 'learning_tier': learning_tier,
                 'mastery_tier': mastery_tier,
                 'most_common_lane': most_common_lane,
-                'dynamic_status': status,
+                'bias_status': status,
                 'mastery_threshold': mastery_threshold,
                 'estimated_games': estimated_games,
                 'difficulty_label': difficulty_label,
@@ -716,42 +780,57 @@ class MasteryAnalyzer:
         champion_stats = self.compute_champion_stats()
         lane_impact = self.compute_lane_impact(champion_stats)
         games_to_50 = self.compute_games_to_50_winrate()
-        dynamic_champion_stats = self.compute_dynamic_champion_stats(games_to_50)
+        bias_champion_stats = self.compute_bias_champion_stats(games_to_50)
+        mastery_curves = self.compute_mastery_curves_by_champion()
 
-        # Dynamic rankings
-        instantly_viable = sorted(
-            [(c, s) for c, s in dynamic_champion_stats.items()
-             if s.get('dynamic_status') == 'always above 50%' and s.get('medium_wr') is not None],
+        # Bias rankings
+        bias_instantly_viable = sorted(
+            [(c, s) for c, s in bias_champion_stats.items()
+             if s.get('bias_status') == 'always above 50%' and s.get('medium_wr') is not None],
             key=lambda x: x[1]['medium_wr'],
             reverse=True
         )
-        dynamic_easiest_base = sorted(
-            [(c, s) for c, s in dynamic_champion_stats.items() if s['learning_score'] is not None],
+        bias_easiest_base = sorted(
+            [(c, s) for c, s in bias_champion_stats.items() if s['learning_score'] is not None],
             key=lambda x: x[1]['learning_score'],
             reverse=True
         )
-        dynamic_easiest_to_learn = [
-            {'champion': c, **s} for c, s in (instantly_viable + dynamic_easiest_base)
+        bias_easiest_to_learn = [
+            {'champion': c, **s} for c, s in (bias_instantly_viable + bias_easiest_base)
         ]
 
-        dynamic_best_to_master = sorted(
-            [(c, s) for c, s in dynamic_champion_stats.items() if s['mastery_score'] is not None],
+        bias_best_to_master = sorted(
+            [(c, s) for c, s in bias_champion_stats.items() if s['mastery_score'] is not None],
             key=lambda x: x[1]['mastery_score'],
             reverse=True
         )
 
-        dynamic_best_investment = sorted(
-            [(c, s) for c, s in dynamic_champion_stats.items() if s['investment_score'] is not None],
+        bias_best_investment = sorted(
+            [(c, s) for c, s in bias_champion_stats.items() if s['investment_score'] is not None],
             key=lambda x: x[1]['investment_score'],
             reverse=True
         )
 
-        # Rankings
-        easiest_to_learn = sorted(
-            [(c, s) for c, s in champion_stats.items() if s['learning_score'] is not None],
-            key=lambda x: x[1]['learning_score'],
-            reverse=True
-        )
+        # Rankings — easiest_to_learn sorted by games-to-50 approach
+        g50_lookup = {entry['champion_name']: entry for entry in games_to_50}
+
+        def easiest_sort_key(item):
+            champ, _ = item
+            g50 = g50_lookup.get(champ)
+            if g50 is None:
+                return (3, 0, champ)
+            status = g50.get('status', '')
+            if status == 'always above 50%':
+                return (0, 0, champ)
+            elif status == 'crosses 50%':
+                est = g50.get('estimated_games') or 0
+                return (1, est, champ)
+            elif status == 'never reaches 50%':
+                return (2, 0, champ)
+            else:  # low data
+                return (3, 0, champ)
+
+        easiest_to_learn = sorted(champion_stats.items(), key=easiest_sort_key)
 
         best_to_master = sorted(
             [(c, s) for c, s in champion_stats.items() if s['mastery_score'] is not None],
@@ -778,7 +857,14 @@ class MasteryAnalyzer:
             'champion_stats': champion_stats,
             'lane_impact': lane_impact,
             'easiest_to_learn': [
-                {'champion': c, **s} for c, s in easiest_to_learn
+                {
+                    'champion': c,
+                    'games_to_50_status': g50_lookup.get(c, {}).get('status'),
+                    'estimated_games': g50_lookup.get(c, {}).get('estimated_games'),
+                    'mastery_threshold': g50_lookup.get(c, {}).get('mastery_threshold'),
+                    'starting_winrate': g50_lookup.get(c, {}).get('starting_winrate'),
+                    **s
+                } for c, s in easiest_to_learn
             ],
             'best_to_master': [
                 {'champion': c, **s} for c, s in best_to_master
@@ -787,14 +873,15 @@ class MasteryAnalyzer:
                 {'champion': c, **s} for c, s in best_investment
             ],
             'games_to_50_winrate': games_to_50,
-            'dynamic_champion_stats': dynamic_champion_stats,
-            'dynamic_easiest_to_learn': dynamic_easiest_to_learn,
-            'dynamic_best_to_master': [
-                {'champion': c, **s} for c, s in dynamic_best_to_master
+            'bias_champion_stats': bias_champion_stats,
+            'bias_easiest_to_learn': bias_easiest_to_learn,
+            'bias_best_to_master': [
+                {'champion': c, **s} for c, s in bias_best_to_master
             ],
-            'dynamic_best_investment': [
-                {'champion': c, **s} for c, s in dynamic_best_investment
+            'bias_best_investment': [
+                {'champion': c, **s} for c, s in bias_best_investment
             ],
+            'mastery_curves': mastery_curves,
         }
 
         return results
@@ -875,11 +962,12 @@ def main():
             if results['easiest_to_learn']:
                 logger.info(f"\n  Top 5 Easiest to Learn:")
                 for entry in results['easiest_to_learn'][:5]:
+                    est = entry.get('estimated_games')
+                    est_str = f"{est} games" if est is not None else 'N/A'
                     logger.info(
                         f"    {entry['champion']:20s} "
-                        f"Score: {entry['learning_score']:.2f}  "
-                        f"Ratio: {entry['low_ratio']:.3f}  "
-                        f"Delta: {entry['low_delta']:+.2f}pp "
+                        f"Status: {entry.get('games_to_50_status', 'N/A'):20s} "
+                        f"Est: {est_str:12s} "
                         f"({entry['most_common_lane']})"
                     )
 

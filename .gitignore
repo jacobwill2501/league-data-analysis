@@ -1,5 +1,6 @@
-data/
-output/
+/data/
+output/csv/
+output/charts/
 .env
 __pycache__/
 *.pyc
