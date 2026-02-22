@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 _shutdown_event = threading.Event()
 
 
+class TransientAPIError(Exception):
+    """Raised when a request fails with server errors after all retries."""
+    pass
+
+
 def _interruptible_sleep(seconds: float):
     """Sleep that can be interrupted by _shutdown_event."""
     _shutdown_event.wait(timeout=seconds)
@@ -206,33 +211,38 @@ class RiotAPIClient:
             return self.limiters[key]
 
     def _make_request(self, url: str, endpoint_group: str, region: str,
-                     params: Optional[Dict] = None, max_retries: int = 3) -> Dict[str, Any]:
+                     params: Optional[Dict] = None, max_retries: int = 8) -> Dict[str, Any]:
         """
-        Make an API request with rate limiting and retry logic
+        Make an API request with rate limiting and retry logic.
 
         Args:
             url: Full API URL
             endpoint_group: API endpoint group for rate limiting
             region: Region code
             params: Query parameters
-            max_retries: Maximum number of retries
+            max_retries: Maximum 5xx/timeout retry attempts (default 8,
+                         backoff 1s→2s→4s→8s→16s→32s→60s→60s ≈ 3 min)
 
         Returns:
-            Response JSON data
+            Response JSON data, or None for permanent failures (400, 404).
 
         Raises:
-            requests.exceptions.RequestException: On request failure
+            TransientAPIError: When 5xx/timeout retries are fully exhausted.
         """
         limiter = self._get_limiter(endpoint_group, region)
 
-        for attempt in range(max_retries):
+        # Separate counter for 5xx/timeout failures so 429 waits don't
+        # consume retry budget.
+        attempts_5xx = 0
+
+        while True:
             # Wait for rate limits
             limiter.wait_if_needed()
 
             try:
                 response = self.session.get(url, params=params, timeout=10)
 
-                # Handle rate limiting (429)
+                # Handle rate limiting (429) — does NOT consume a retry slot
                 if response.status_code == 429:
                     retry_after = int(response.headers.get('Retry-After', 1))
                     jitter = random.uniform(0, 2.0)
@@ -243,7 +253,7 @@ class RiotAPIClient:
                     )
                     limiter.reset(sleep_time)
                     _interruptible_sleep(sleep_time)
-                    continue
+                    continue  # attempts_5xx unchanged
 
                 # Handle bad request (400) - permanent client error, no point retrying
                 if response.status_code == 400:
@@ -258,13 +268,22 @@ class RiotAPIClient:
                     logger.debug(f"Resource not found (404): {url}")
                     return None
 
-                # Handle server errors (502, 503) - transient, retry with backoff
+                # Handle server errors (502, 503) - transient, retry with capped backoff
                 if response.status_code in (502, 503):
+                    attempts_5xx += 1
+                    sleep_time = min(2 ** (attempts_5xx - 1), 60)
                     logger.warning(
                         f"Server error ({response.status_code}) for {endpoint_group}/{region}, "
-                        f"attempt {attempt + 1}/{max_retries}, retrying after {2 ** attempt}s"
+                        f"attempt {attempts_5xx}/{max_retries}, retrying after {sleep_time}s"
                     )
-                    _interruptible_sleep(2 ** attempt)
+                    _interruptible_sleep(sleep_time)
+                    if attempts_5xx >= max_retries:
+                        logger.error(
+                            f"Max retries ({max_retries}) exceeded for {url}"
+                        )
+                        raise TransientAPIError(
+                            f"Server error {response.status_code} after {max_retries} retries: {url}"
+                        )
                     continue
 
                 # Raise for other HTTP errors
@@ -286,24 +305,29 @@ class RiotAPIClient:
                 return response.json()
 
             except requests.exceptions.Timeout:
-                logger.warning(f"Request timeout, attempt {attempt + 1}/{max_retries}")
-                if attempt < max_retries - 1:
-                    _interruptible_sleep(2 ** attempt)
-                    continue
-                logger.error(f"Request timeout after {max_retries} attempts for {url}, skipping")
-                return None
+                attempts_5xx += 1
+                sleep_time = min(2 ** (attempts_5xx - 1), 60)
+                logger.warning(
+                    f"Request timeout, attempt {attempts_5xx}/{max_retries}, "
+                    f"retrying after {sleep_time}s"
+                )
+                _interruptible_sleep(sleep_time)
+                if attempts_5xx >= max_retries:
+                    logger.error(f"Request timeout after {max_retries} attempts for {url}")
+                    raise TransientAPIError(
+                        f"Timeout after {max_retries} retries: {url}"
+                    )
 
             except requests.exceptions.RequestException as e:
+                attempts_5xx += 1
+                sleep_time = min(2 ** (attempts_5xx - 1), 60)
                 logger.error(f"Request failed: {e}")
-                if attempt < max_retries - 1:
-                    _interruptible_sleep(2 ** attempt)
-                    continue
-                logger.error(f"Request failed after {max_retries} attempts for {url}, skipping")
-                return None
-
-        # All retries exhausted — skip rather than crash
-        logger.error(f"Max retries ({max_retries}) exceeded for {url}, skipping")
-        return None
+                _interruptible_sleep(sleep_time)
+                if attempts_5xx >= max_retries:
+                    logger.error(f"Request failed after {max_retries} attempts for {url}")
+                    raise TransientAPIError(
+                        f"Request failed after {max_retries} retries: {url}"
+                    )
 
     # League-v4 endpoints
     def get_league_entries(self, region: str, queue: str, tier: str,

@@ -12,6 +12,7 @@ import signal
 import sqlite3
 import sys
 import time
+from typing import Optional
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -23,7 +24,7 @@ from config import (REGIONS, RANKED_SOLO_QUEUE_ID, MINIMUM_GAME_DURATION,
                     DEFAULT_MATCH_TARGET, MATCH_TARGET_PRESETS,
                     TIER_ALLOCATION, APEX_TIERS)
 from db import Database
-from riot_api import RiotAPIClient, _shutdown_event
+from riot_api import RiotAPIClient, TransientAPIError, _shutdown_event, _interruptible_sleep
 from utils import setup_logging, format_duration, format_number, PatchManager
 
 logger = logging.getLogger(__name__)
@@ -113,8 +114,14 @@ def process_match(api: RiotAPIClient, db: Database, region: str, match_id: str) 
 
 
 def collect_matches_for_player(api: RiotAPIClient, db: Database,
-                                region: str, puuid: str) -> int:
-    """Collect match IDs for a player and fetch details. Returns new match count."""
+                                region: str, puuid: str,
+                                failed_match_ids: Optional[dict] = None) -> int:
+    """Collect match IDs for a player and fetch details. Returns new match count.
+
+    Transiently failed match IDs (502/503 exhaustion) are added to
+    failed_match_ids (match_id → region) when provided, so the caller
+    can schedule a retry pass after the main loop.
+    """
     try:
         match_ids = api.get_match_ids_by_puuid(
             region, puuid, queue=RANKED_SOLO_QUEUE_ID,
@@ -132,8 +139,15 @@ def collect_matches_for_player(api: RiotAPIClient, db: Database,
             if db.match_exists(match_id):
                 continue
 
-            if process_match(api, db, region, match_id):
-                new_matches += 1
+            try:
+                if process_match(api, db, region, match_id):
+                    new_matches += 1
+            except TransientAPIError:
+                logger.warning(
+                    f"Transient failure fetching {match_id}, queuing for retry"
+                )
+                if failed_match_ids is not None:
+                    failed_match_ids[match_id] = region
 
         return new_matches
 
@@ -154,6 +168,7 @@ def collect_all_for_region(api: RiotAPIClient, db: Database,
     ]
 
     total_new = 0
+    failed_match_ids: dict = {}  # match_id → region, populated by transient failures
 
     # Pre-compute cumulative group targets from total target
     group_targets = {}
@@ -183,12 +198,36 @@ def collect_all_for_region(api: RiotAPIClient, db: Database,
             current = db.count_matches(region)
             if current >= group_target:
                 break
-            new = collect_matches_for_player(api, db, region, puuid)
+            new = collect_matches_for_player(api, db, region, puuid, failed_match_ids)
             total_new += new
             pbar.n = db.count_matches(region)
             pbar.set_postfix(new=total_new)
             pbar.refresh()
         pbar.close()
+
+    # Retry pass: re-attempt matches that hit sustained 5xx errors
+    if failed_match_ids and not _shutdown:
+        logger.info(
+            f"[{region}] Retrying {len(failed_match_ids)} transiently failed matches "
+            f"after 60s pause..."
+        )
+        _interruptible_sleep(60)
+        recovered = 0
+        still_failed = 0
+        for match_id, match_region in failed_match_ids.items():
+            if _shutdown:
+                break
+            try:
+                if process_match(api, db, match_region, match_id):
+                    recovered += 1
+            except TransientAPIError:
+                still_failed += 1
+                logger.warning(f"Match {match_id} still unreachable after retry pass")
+        logger.info(
+            f"[{region}] Recovered {recovered}/{len(failed_match_ids)} "
+            f"previously failed matches ({still_failed} still failing)"
+        )
+        total_new += recovered
 
     return total_new
 
