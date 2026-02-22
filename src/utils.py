@@ -155,6 +155,34 @@ class PatchManager:
 
         return patches
 
+    def get_season_patches(self, season: int) -> List[str]:
+        """
+        Get all patches for a given season (major version number).
+
+        Args:
+            season: Season/major version number (e.g., 16 for S16)
+
+        Returns:
+            List of patch versions (e.g., ['16.1', '16.2', '16.3', '16.4'])
+        """
+        if not self.versions:
+            self.fetch_versions()
+
+        patches = []
+        seen = set()
+        prefix = f"{season}."
+
+        for version in self.versions:
+            if version.startswith(prefix):
+                patch = '.'.join(version.split('.')[:2])
+                if patch not in seen:
+                    patches.append(patch)
+                    seen.add(patch)
+
+        # Return in ascending order (oldest first)
+        patches.sort(key=lambda p: int(p.split('.')[1]))
+        return patches
+
     def match_patch_filter(self, game_version: str, patches: List[str]) -> bool:
         """
         Check if a game version matches any of the specified patches

@@ -12,7 +12,9 @@
       "Bash(python -m py_compile:*)",
       "Bash(python:*)",
       "Bash(sqlite3:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(tail:*)",
+      "Bash(cd /Users/jacwilliams/Desktop/Coding/league-data-analysis/web && npm run build 2>&1)"
     ]
   }
 }

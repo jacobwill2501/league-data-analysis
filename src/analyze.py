@@ -389,6 +389,270 @@ class MasteryAnalyzer:
 
         return results
 
+    def compute_games_to_50_winrate(self) -> List[Dict]:
+        """Estimate how many games it takes each champion to reach 50% win rate.
+
+        Uses WIN_RATE_INTERVALS to compute per-champion win rates at each
+        mastery interval, finds where the curve crosses 50%, and converts
+        the mastery-point threshold to an approximate game count (~700 pts/game).
+        """
+        logger.info("Computing games to 50% win rate...")
+
+        MASTERY_PER_GAME = 700
+
+        # Accumulate per-champion, per-interval stats
+        champ_interval = defaultdict(lambda: defaultdict(lambda: {'wins': 0, 'games': 0}))
+        champ_lanes = defaultdict(lambda: defaultdict(int))
+
+        for p in self.participants:
+            key = (p['puuid'], p['champion_id'])
+            if key not in self.mastery_data:
+                continue
+
+            champ = p['champion_name']
+            points = self.mastery_data[key]['mastery_points']
+
+            lane = p.get('individual_position')
+            if lane:
+                champ_lanes[champ][lane] += 1
+
+            for idx, (lo, hi) in enumerate(WIN_RATE_INTERVALS):
+                if lo <= points < hi:
+                    champ_interval[champ][idx]['games'] += 1
+                    if p['win']:
+                        champ_interval[champ][idx]['wins'] += 1
+                    break
+
+        results = []
+
+        for champ, intervals in champ_interval.items():
+            # Build ordered list of (midpoint, win_rate) for intervals with enough data
+            points_wr = []
+            for idx, (lo, hi) in enumerate(WIN_RATE_INTERVALS):
+                s = intervals.get(idx)
+                if s is None or s['games'] < MINIMUM_SAMPLE_SIZE:
+                    continue
+                mid = lo + (min(hi, 1_000_000) - lo) / 2
+                wr = s['wins'] / s['games']
+                points_wr.append((lo, hi, mid, wr))
+
+            lane_counts = champ_lanes.get(champ, {})
+            most_common_lane = max(lane_counts, key=lane_counts.get) if lane_counts else None
+
+            if len(points_wr) < 2:
+                results.append({
+                    'champion_name': champ,
+                    'lane': most_common_lane,
+                    'mastery_threshold': None,
+                    'estimated_games': None,
+                    'starting_winrate': points_wr[0][3] if points_wr else None,
+                    'status': 'low data',
+                })
+                continue
+
+            starting_wr = points_wr[0][3]
+
+            # Check if always above 50%
+            if all(wr >= 0.50 for _, _, _, wr in points_wr):
+                results.append({
+                    'champion_name': champ,
+                    'lane': most_common_lane,
+                    'mastery_threshold': 0,
+                    'estimated_games': 0,
+                    'starting_winrate': starting_wr,
+                    'status': 'always above 50%',
+                })
+                continue
+
+            # Look for the crossing point
+            crossed = False
+            for i in range(len(points_wr) - 1):
+                lo1, hi1, mid1, wr1 = points_wr[i]
+                lo2, hi2, mid2, wr2 = points_wr[i + 1]
+
+                if wr1 < 0.50 <= wr2:
+                    # Linear interpolation between midpoints
+                    if wr2 != wr1:
+                        frac = (0.50 - wr1) / (wr2 - wr1)
+                        threshold = mid1 + frac * (mid2 - mid1)
+                    else:
+                        threshold = mid1
+                    results.append({
+                        'champion_name': champ,
+                        'lane': most_common_lane,
+                        'mastery_threshold': round(threshold),
+                        'estimated_games': round(threshold / MASTERY_PER_GAME),
+                        'starting_winrate': starting_wr,
+                        'status': 'crosses 50%',
+                    })
+                    crossed = True
+                    break
+
+            if not crossed:
+                results.append({
+                    'champion_name': champ,
+                    'lane': most_common_lane,
+                    'mastery_threshold': None,
+                    'estimated_games': None,
+                    'starting_winrate': starting_wr,
+                    'status': 'never reaches 50%',
+                })
+
+        # Sort: always above (0 games) first, then crosses by games asc, then never reaches
+        def sort_key(r):
+            status = r['status']
+            if status == 'always above 50%':
+                return (0, 0, r['champion_name'])
+            elif status == 'crosses 50%':
+                return (1, r['estimated_games'], r['champion_name'])
+            elif status == 'never reaches 50%':
+                return (2, 0, r['champion_name'])
+            else:  # low data
+                return (3, 0, r['champion_name'])
+
+        results.sort(key=sort_key)
+
+        logger.info(f"  Champions always above 50%%: {sum(1 for r in results if r['status'] == 'always above 50%')}")
+        logger.info(f"  Champions that cross 50%%: {sum(1 for r in results if r['status'] == 'crosses 50%')}")
+        logger.info(f"  Champions that never reach 50%%: {sum(1 for r in results if r['status'] == 'never reaches 50%')}")
+        logger.info(f"  Low data: {sum(1 for r in results if r['status'] == 'low data')}")
+
+        return results
+
+    def compute_dynamic_champion_stats(self, games_to_50: List[Dict]) -> Dict:
+        """Compute per-champion statistics using dynamic per-champion mastery buckets.
+
+        Bucket boundaries are derived from games_to_50 thresholds:
+          - 'crosses 50%'     → Low: 0→threshold, Medium: threshold→100k, High: 100k+
+          - 'always above 50%'→ (no Low), Medium: 0→100k, High: 100k+
+          - 'never reaches 50%' → Low: 0→100k, (no Medium), High: 100k+
+          - 'low data'        → skip entirely
+        """
+        logger.info("Computing dynamic per-champion statistics...")
+
+        HIGH_THRESHOLD = MASTERY_BUCKETS['medium']['max']  # 100_000
+
+        # Build lookup from champion name → g50 entry
+        g50_by_champ = {entry['champion_name']: entry for entry in games_to_50}
+
+        champ_data = defaultdict(lambda: {
+            'low': {'wins': 0, 'games': 0},
+            'medium': {'wins': 0, 'games': 0},
+            'high': {'wins': 0, 'games': 0},
+            'lane_counts': defaultdict(int),
+        })
+
+        for p in self.participants:
+            key = (p['puuid'], p['champion_id'])
+            if key not in self.mastery_data:
+                continue
+
+            champ = p['champion_name']
+            g50_entry = g50_by_champ.get(champ)
+            if g50_entry is None:
+                continue
+
+            status = g50_entry['status']
+            if status == 'low data':
+                continue
+
+            points = self.mastery_data[key]['mastery_points']
+            threshold = g50_entry['mastery_threshold']
+
+            if status == 'always above 50%':
+                bucket = 'medium' if points < HIGH_THRESHOLD else 'high'
+            elif status == 'crosses 50%':
+                if threshold is None:
+                    continue
+                if points < threshold:
+                    bucket = 'low'
+                elif points < HIGH_THRESHOLD:
+                    bucket = 'medium'
+                else:
+                    bucket = 'high'
+            elif status == 'never reaches 50%':
+                bucket = 'low' if points < HIGH_THRESHOLD else 'high'
+            else:
+                continue
+
+            champ_data[champ][bucket]['games'] += 1
+            if p['win']:
+                champ_data[champ][bucket]['wins'] += 1
+
+            lane = p.get('individual_position')
+            if lane:
+                champ_data[champ]['lane_counts'][lane] += 1
+
+        results = {}
+
+        for champ, data in champ_data.items():
+            g50_entry = g50_by_champ.get(champ, {})
+            status = g50_entry.get('status')
+            mastery_threshold = g50_entry.get('mastery_threshold')
+            estimated_games = g50_entry.get('estimated_games')
+
+            # Difficulty label
+            if status == 'always above 50%':
+                difficulty_label = 'Instantly Viable'
+            elif status == 'crosses 50%' and mastery_threshold is not None and mastery_threshold >= 90_000:
+                difficulty_label = 'Extremely Hard to Learn'
+            elif status == 'never reaches 50%':
+                difficulty_label = 'Never Viable'
+            else:
+                difficulty_label = None
+
+            low_wr = None
+            med_wr = None
+            high_wr = None
+
+            if data['low']['games'] >= MINIMUM_SAMPLE_SIZE:
+                low_wr = data['low']['wins'] / data['low']['games']
+            if data['medium']['games'] >= MINIMUM_SAMPLE_SIZE:
+                med_wr = data['medium']['wins'] / data['medium']['games']
+            if data['high']['games'] >= MINIMUM_SAMPLE_SIZE:
+                high_wr = data['high']['wins'] / data['high']['games']
+
+            low_ratio = low_wr / med_wr if (low_wr is not None and med_wr is not None) else None
+            high_ratio = high_wr / med_wr if (high_wr is not None and med_wr is not None) else None
+
+            low_delta = (low_wr - med_wr) * 100 if (low_wr is not None and med_wr is not None) else None
+            delta = (high_wr - med_wr) * 100 if (high_wr is not None and med_wr is not None) else None
+
+            mastery_score = ((high_wr * 100 - 50) + (high_ratio - 1) * 50) if (high_wr is not None and high_ratio is not None) else None
+            learning_score = ((low_wr * 100 - 50) + (low_ratio - 1) * 50) if (low_wr is not None and low_ratio is not None) else None
+            investment_score = (learning_score * 0.4 + mastery_score * 0.6) if (learning_score is not None and mastery_score is not None) else None
+
+            learning_tier = _learning_tier(learning_score)
+            mastery_tier = _mastery_tier(mastery_score)
+
+            lane_counts = data['lane_counts']
+            most_common_lane = max(lane_counts, key=lane_counts.get) if lane_counts else None
+
+            results[champ] = {
+                'low_wr': low_wr,
+                'medium_wr': med_wr,
+                'high_wr': high_wr,
+                'low_games': data['low']['games'],
+                'medium_games': data['medium']['games'],
+                'high_games': data['high']['games'],
+                'low_ratio': low_ratio,
+                'high_ratio': high_ratio,
+                'low_delta': low_delta,
+                'delta': delta,
+                'mastery_score': mastery_score,
+                'learning_score': learning_score,
+                'investment_score': investment_score,
+                'learning_tier': learning_tier,
+                'mastery_tier': mastery_tier,
+                'most_common_lane': most_common_lane,
+                'dynamic_status': status,
+                'mastery_threshold': mastery_threshold,
+                'estimated_games': estimated_games,
+                'difficulty_label': difficulty_label,
+            }
+
+        return results
+
     def compute_lane_impact(self, champion_stats: Dict) -> Dict:
         """Compute mastery impact by lane"""
         logger.info("Computing lane impact...")
@@ -451,6 +715,36 @@ class MasteryAnalyzer:
         winrate_curve = self.compute_winrate_curve()
         champion_stats = self.compute_champion_stats()
         lane_impact = self.compute_lane_impact(champion_stats)
+        games_to_50 = self.compute_games_to_50_winrate()
+        dynamic_champion_stats = self.compute_dynamic_champion_stats(games_to_50)
+
+        # Dynamic rankings
+        instantly_viable = sorted(
+            [(c, s) for c, s in dynamic_champion_stats.items()
+             if s.get('dynamic_status') == 'always above 50%' and s.get('medium_wr') is not None],
+            key=lambda x: x[1]['medium_wr'],
+            reverse=True
+        )
+        dynamic_easiest_base = sorted(
+            [(c, s) for c, s in dynamic_champion_stats.items() if s['learning_score'] is not None],
+            key=lambda x: x[1]['learning_score'],
+            reverse=True
+        )
+        dynamic_easiest_to_learn = [
+            {'champion': c, **s} for c, s in (instantly_viable + dynamic_easiest_base)
+        ]
+
+        dynamic_best_to_master = sorted(
+            [(c, s) for c, s in dynamic_champion_stats.items() if s['mastery_score'] is not None],
+            key=lambda x: x[1]['mastery_score'],
+            reverse=True
+        )
+
+        dynamic_best_investment = sorted(
+            [(c, s) for c, s in dynamic_champion_stats.items() if s['investment_score'] is not None],
+            key=lambda x: x[1]['investment_score'],
+            reverse=True
+        )
 
         # Rankings
         easiest_to_learn = sorted(
@@ -492,6 +786,15 @@ class MasteryAnalyzer:
             'best_investment': [
                 {'champion': c, **s} for c, s in best_investment
             ],
+            'games_to_50_winrate': games_to_50,
+            'dynamic_champion_stats': dynamic_champion_stats,
+            'dynamic_easiest_to_learn': dynamic_easiest_to_learn,
+            'dynamic_best_to_master': [
+                {'champion': c, **s} for c, s in dynamic_best_to_master
+            ],
+            'dynamic_best_investment': [
+                {'champion': c, **s} for c, s in dynamic_best_investment
+            ],
         }
 
         return results
@@ -519,8 +822,10 @@ def main():
     parser.add_argument('--filter', choices=list(ELO_FILTERS.keys()) + ['all'],
                         default='all',
                         help='Elo filter to analyze (default: all)')
-    parser.add_argument('--patches', choices=['current', 'last3'], default='last3',
-                        help='Patch range to include (default: last3)')
+    parser.add_argument('--patches', choices=['current', 'last3', 'season'], default='season',
+                        help='Patch range to include (default: season — all S16 patches)')
+    parser.add_argument('--season', type=int, default=16,
+                        help='Season number for --patches=season (default: 16)')
     parser.add_argument('--output', type=str, default='output/analysis',
                         help='Output directory')
     parser.add_argument('--verbose', action='store_true',
@@ -538,6 +843,8 @@ def main():
     patch_mgr = PatchManager()
     if args.patches == 'current':
         patch_versions = [patch_mgr.get_current_patch()]
+    elif args.patches == 'season':
+        patch_versions = patch_mgr.get_season_patches(args.season)
     else:
         patch_versions = patch_mgr.get_last_n_patches(3)
     logger.info(f"Patch filter: {patch_versions}")

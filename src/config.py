@@ -126,7 +126,7 @@ MINIMUM_SAMPLE_SIZE = 100  # Minimum games per bucket for valid stats
 MINIMUM_GAME_DURATION = 300  # Skip remakes (< 5 minutes)
 
 # Patch Configuration
-PATCH_MODES = ['current', 'last3']
+PATCH_MODES = ['current', 'last3', 'season']
 
 # Data Dragon URLs
 DDRAGON_VERSIONS_URL = 'https://ddragon.leagueoflegends.com/api/versions.json'

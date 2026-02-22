@@ -324,6 +324,174 @@ def export_best_investment(results: dict, output_dir: str, filter_name: str):
     logger.info(f"  Saved: {path}")
 
 
+def export_games_to_50_winrate(results: dict, output_dir: str, filter_name: str):
+    """Export the Games to 50% Win Rate CSV"""
+    entries = results.get('games_to_50_winrate', [])
+    if not entries:
+        logger.warning(f"  No games_to_50_winrate data for {filter_name}")
+        return
+
+    rows = []
+
+    # Header row
+    rows.append(['', '', 'Most Common Lane', 'Champion Name',
+                 'Estimated Games', 'Mastery Threshold', 'Starting Win Rate',
+                 'Status', '', '', ''])
+
+    for i, entry in enumerate(entries):
+        lane = get_lane_display(entry.get('lane', ''))
+        champ = entry.get('champion_name', '')
+        est_games = entry.get('estimated_games')
+        threshold = entry.get('mastery_threshold')
+        starting_wr = format_win_rate(entry.get('starting_winrate'))
+        status = entry.get('status', '')
+
+        if est_games is not None:
+            est_games_str = str(est_games)
+        else:
+            est_games_str = 'N/A'
+
+        if threshold is not None:
+            threshold_str = f"{threshold:,}"
+        else:
+            threshold_str = 'N/A'
+
+        row = ['', '', lane, champ, est_games_str, threshold_str, starting_wr, status, '', '', '']
+
+        # Annotation columns
+        if i == 1:
+            row[9] = 'Estimated Games to 50% Win Rate'
+        elif i == 2:
+            row[9] = 'Uses ~700 mastery points per game'
+        elif i == 3:
+            row[9] = 'Interpolates between mastery intervals'
+        elif i == 5:
+            row[9] = '"always above 50%":'
+            row[10] = 'Already above 50% at lowest mastery'
+        elif i == 6:
+            row[9] = '"never reaches 50%":'
+            row[10] = 'Never crosses 50% at any mastery level'
+
+        rows.append(row)
+
+    path = os.path.join(output_dir, f'{filter_name} - Games to 50 Percent Winrate.csv')
+    with open(path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerows(rows)
+
+    logger.info(f"  Saved: {path}")
+
+
+def export_dynamic_easiest_to_learn(results: dict, output_dir: str, filter_name: str):
+    """Export Dynamic Easiest to Learn CSV using per-champion mastery thresholds"""
+    ranking = results.get('dynamic_easiest_to_learn', [])
+
+    rows = []
+    rows.append(['', '', 'Most Common Lane', 'Champion Name',
+                 'Low Mastery Win Rate', 'Medium Mastery Win Rate',
+                 'Low Mastery Ratio', 'Win Rate Delta', 'Learning Effectiveness Score',
+                 'Tier', '50% WR Games', 'Difficulty'])
+
+    for entry in ranking:
+        lane = get_lane_display(entry.get('most_common_lane', ''))
+        champ = entry.get('champion', '')
+        status = entry.get('dynamic_status', '')
+        difficulty = entry.get('difficulty_label', '') or ''
+        est_games = entry.get('estimated_games')
+        games_str = str(est_games) if est_games is not None else 'N/A'
+
+        if status == 'always above 50%':
+            low_wr = 'N/A'
+            med_wr = format_win_rate(entry.get('medium_wr'))
+            ratio = 'N/A'
+            low_delta = 'N/A'
+            score = 'N/A'
+            tier = 'Instantly Viable'
+        else:
+            low_wr = format_win_rate(entry.get('low_wr'))
+            med_wr = format_win_rate(entry.get('medium_wr'))
+            ratio = format_ratio(entry.get('low_ratio'))
+            low_delta = format_delta(entry.get('low_delta'))
+            score = format_score(entry.get('learning_score'))
+            tier = entry.get('learning_tier', '') or ''
+
+        rows.append(['', '', lane, champ, low_wr, med_wr, ratio, low_delta, score, tier, games_str, difficulty])
+
+    path = os.path.join(output_dir, f'{filter_name} - Dynamic Easiest to Learn.csv')
+    with open(path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerows(rows)
+
+    logger.info(f"  Saved: {path}")
+
+
+def export_dynamic_best_to_master(results: dict, output_dir: str, filter_name: str):
+    """Export Dynamic Best to Master CSV using per-champion mastery thresholds"""
+    ranking = results.get('dynamic_best_to_master', [])
+
+    rows = []
+    rows.append(['', '', 'Most Common Lane', 'Champion Name',
+                 'Medium Mastery Win Rate', 'High Mastery Win Rate',
+                 'High Mastery Ratio', 'Win Rate Delta', 'Mastery Effectiveness Score',
+                 'Tier', '50% WR Games', 'Difficulty'])
+
+    for entry in ranking:
+        lane = get_lane_display(entry.get('most_common_lane', ''))
+        champ = entry.get('champion', '')
+        difficulty = entry.get('difficulty_label', '') or ''
+        est_games = entry.get('estimated_games')
+        games_str = str(est_games) if est_games is not None else 'N/A'
+
+        med_wr = format_win_rate(entry.get('medium_wr'))
+        high_wr = format_win_rate(entry.get('high_wr'))
+        ratio = format_ratio(entry.get('high_ratio'))
+        delta = format_delta(entry.get('delta'))
+        score = format_score(entry.get('mastery_score'))
+        tier = entry.get('mastery_tier', '') or ''
+
+        rows.append(['', '', lane, champ, med_wr, high_wr, ratio, delta, score, tier, games_str, difficulty])
+
+    path = os.path.join(output_dir, f'{filter_name} - Dynamic Best to Master.csv')
+    with open(path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerows(rows)
+
+    logger.info(f"  Saved: {path}")
+
+
+def export_dynamic_best_investment(results: dict, output_dir: str, filter_name: str):
+    """Export Dynamic Best Investment CSV using per-champion mastery thresholds"""
+    ranking = results.get('dynamic_best_investment', [])
+
+    rows = []
+    rows.append(['', '', 'Most Common Lane', 'Champion Name',
+                 'Low Mastery Win Rate', 'High Mastery Win Rate',
+                 'Learning Score', 'Mastery Score', 'Investment Score',
+                 '50% WR Games', 'Difficulty'])
+
+    for entry in ranking:
+        lane = get_lane_display(entry.get('most_common_lane', ''))
+        champ = entry.get('champion', '')
+        difficulty = entry.get('difficulty_label', '') or ''
+        est_games = entry.get('estimated_games')
+        games_str = str(est_games) if est_games is not None else 'N/A'
+
+        low_wr = format_win_rate(entry.get('low_wr'))
+        high_wr = format_win_rate(entry.get('high_wr'))
+        learn = format_score(entry.get('learning_score'))
+        master = format_score(entry.get('mastery_score'))
+        invest = format_score(entry.get('investment_score'))
+
+        rows.append(['', '', lane, champ, low_wr, high_wr, learn, master, invest, games_str, difficulty])
+
+    path = os.path.join(output_dir, f'{filter_name} - Dynamic Best Investment.csv')
+    with open(path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerows(rows)
+
+    logger.info(f"  Saved: {path}")
+
+
 def export_all_csvs(results: dict, output_dir: str, filter_name: str):
     """Export all CSVs for a filter"""
     logger.info(f"\nExporting CSVs for: {filter_name}")
@@ -334,6 +502,10 @@ def export_all_csvs(results: dict, output_dir: str, filter_name: str):
     export_easiest_to_learn(results, output_dir, filter_name)
     export_best_to_master(results, output_dir, filter_name)
     export_best_investment(results, output_dir, filter_name)
+    export_games_to_50_winrate(results, output_dir, filter_name)
+    export_dynamic_easiest_to_learn(results, output_dir, filter_name)
+    export_dynamic_best_to_master(results, output_dir, filter_name)
+    export_dynamic_best_investment(results, output_dir, filter_name)
 
 
 def main():
@@ -362,7 +534,7 @@ def main():
         logger.info(f"Removed {len(old_csvs)} old CSV file(s) from {args.output}")
 
     filters = list(ELO_FILTERS.keys()) if args.filter == 'all' else [args.filter]
-    csvs_per_filter = 4
+    csvs_per_filter = 8
     logger.info(f"Will generate up to {len(filters) * csvs_per_filter} CSV files across {len(filters)} filter(s)")
 
     for i, filter_name in enumerate(tqdm(filters, desc="Exporting CSVs", unit="filter"), 1):
