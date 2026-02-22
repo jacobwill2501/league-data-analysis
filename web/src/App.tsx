@@ -42,14 +42,14 @@ const MASTERY_TIERS = [
 ]
 
 function getTierOptions(view: ViewMode): string[] {
-  if (['easiest_to_learn', 'bias_easiest'].includes(view)) return LEARNING_TIERS
-  if (['best_to_master', 'bias_master'].includes(view)) return MASTERY_TIERS
+  if (view === 'easiest_to_learn') return LEARNING_TIERS
+  if (view === 'best_to_master') return MASTERY_TIERS
   return []
 }
 
 function getTierField(view: ViewMode): keyof ChampionStat | null {
-  if (['easiest_to_learn', 'bias_easiest'].includes(view)) return 'learning_tier'
-  if (['best_to_master', 'bias_master'].includes(view)) return 'mastery_tier'
+  if (view === 'easiest_to_learn') return 'learning_tier'
+  if (view === 'best_to_master') return 'mastery_tier'
   return null
 }
 
@@ -89,15 +89,11 @@ export function App() {
   const sourceRows = useMemo((): ChampionStat[] => {
     if (!data) return []
     switch (view) {
-      case 'easiest_to_learn':  return data.easiestToLearn
-      case 'best_to_master':    return data.bestToMaster
-      case 'best_investment':   return data.bestInvestment
-      case 'all_stats':         return data.champions
-      case 'bias_easiest':      return data.biasEasiest
-      case 'bias_master':       return data.biasMaster
-      case 'bias_investment':   return data.biasInvestment
-      case 'mastery_curve':     return []
-      default:                  return data.champions
+      case 'easiest_to_learn': return data.easiestToLearn
+      case 'best_to_master':   return data.bestToMaster
+      case 'all_stats':        return data.champions
+      case 'mastery_curve':    return []
+      default:                 return data.champions
     }
   }, [data, view])
 

@@ -24,11 +24,7 @@ import { fmtLane } from '../utils/format'
 import {
   getEasiestToLearnCols,
   getBestToMasterCols,
-  getBestInvestmentCols,
   getAllStatsCols,
-  getBiasEasiestCols,
-  getBiasMasterCols,
-  getBiasInvestmentCols,
   getGamesTo50Cols,
   VIEW_CONFIGS,
 } from '../utils/columns'
@@ -274,12 +270,8 @@ interface G50TableProps {
 
 export function ChampionTable({ data, view }: ChampionTableProps) {
   const cols =
-    view === 'easiest_to_learn'  ? getEasiestToLearnCols()
-    : view === 'best_to_master'  ? getBestToMasterCols()
-    : view === 'best_investment' ? getBestInvestmentCols()
-    : view === 'bias_easiest'    ? getBiasEasiestCols()
-    : view === 'bias_master'     ? getBiasMasterCols()
-    : view === 'bias_investment' ? getBiasInvestmentCols()
+    view === 'easiest_to_learn' ? getEasiestToLearnCols()
+    : view === 'best_to_master' ? getBestToMasterCols()
     : getAllStatsCols()
 
   return <SortableTable data={data} columns={cols as ColumnDef<ChampionStat>[]} view={view} />

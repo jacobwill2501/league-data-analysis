@@ -3,14 +3,9 @@ import type { AnalysisData, ChampionStat, EloFilter, GameTo50Entry, MasteryChamp
 
 export interface ParsedData {
   champions: ChampionStat[]
-  biasChampions: ChampionStat[]
-  biasEasiest: ChampionStat[]
-  biasMaster: ChampionStat[]
-  biasInvestment: ChampionStat[]
   gameTo50: GameTo50Entry[]
   easiestToLearn: ChampionStat[]
   bestToMaster: ChampionStat[]
-  bestInvestment: ChampionStat[]
   masteryChampionCurves: Record<string, MasteryChampionCurve>
 }
 
@@ -20,10 +15,6 @@ function parseData(raw: AnalysisData): ParsedData {
   const champions: ChampionStat[] = Object.entries(raw.champion_stats).map(
     ([name, stat]) => ({ champion: name, ...stat })
   )
-  const biasChampions: ChampionStat[] = Object.entries(raw.bias_champion_stats ?? {}).map(
-    ([name, stat]) => ({ champion: name, ...stat })
-  )
-
   const gameTo50: GameTo50Entry[] = raw.games_to_50_winrate ?? []
 
   // Lookup map for backward compatibility with old JSON that lacks merged g50 fields
@@ -55,14 +46,9 @@ function parseData(raw: AnalysisData): ParsedData {
 
   return {
     champions,
-    biasChampions,
-    biasEasiest: raw.bias_easiest_to_learn ?? [],
-    biasMaster: raw.bias_best_to_master ?? [],
-    biasInvestment: raw.bias_best_investment ?? [],
     gameTo50,
     easiestToLearn,
     bestToMaster: raw.best_to_master ?? [],
-    bestInvestment: raw.best_investment ?? [],
     masteryChampionCurves,
   }
 }

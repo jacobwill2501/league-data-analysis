@@ -103,18 +103,6 @@ export function getBestToMasterCols(): ColumnDef<ChampionStat>[] {
   ]
 }
 
-export function getBestInvestmentCols(): ColumnDef<ChampionStat>[] {
-  return [
-    championCol,
-    laneCol,
-    { id: 'investment_score', header: 'Investment Score', accessorKey: 'investment_score', cell: i => fmtScore(i.getValue<number | null>()), enableSorting: true },
-    { id: 'learning_score', header: 'Learning Score', accessorKey: 'learning_score', cell: i => fmtScore(i.getValue<number | null>()), enableSorting: true },
-    { id: 'mastery_score', header: 'Mastery Score', accessorKey: 'mastery_score', cell: i => fmtScore(i.getValue<number | null>()), enableSorting: true },
-    learningTierCol,
-    masteryTierCol,
-  ]
-}
-
 export function getAllStatsCols(): ColumnDef<ChampionStat>[] {
   return [
     championCol,
@@ -134,52 +122,6 @@ export function getAllStatsCols(): ColumnDef<ChampionStat>[] {
     { id: 'investment_score', header: 'Invest Score', accessorKey: 'investment_score', cell: i => fmtScore(i.getValue<number | null>()), enableSorting: true },
     learningTierCol,
     masteryTierCol,
-  ]
-}
-
-// ── Bias view columns ──────────────────────────────────────────────────────────
-
-export function getBiasEasiestCols(): ColumnDef<ChampionStat>[] {
-  return [
-    championCol,
-    laneCol,
-    difficultyCol,
-    estGamesChampCol,
-    learningTierCol,
-    { id: 'learning_score', header: 'Learning Score', accessorKey: 'learning_score', cell: i => fmtScore(i.getValue<number | null>()), enableSorting: true },
-    { id: 'low_wr', header: 'Low WR', accessorKey: 'low_wr', cell: i => fmtPct(i.getValue<number | null>()), enableSorting: true },
-    { id: 'medium_wr', header: 'Medium WR', accessorKey: 'medium_wr', cell: i => fmtPct(i.getValue<number | null>()), enableSorting: true },
-    { id: 'low_ratio', header: 'Low Ratio', accessorKey: 'low_ratio', cell: i => fmtRatio(i.getValue<number | null>()), enableSorting: true },
-    { id: 'low_delta', header: 'Low Δ', accessorKey: 'low_delta', cell: i => fmtDelta(i.getValue<number | null>()), enableSorting: true },
-  ]
-}
-
-export function getBiasMasterCols(): ColumnDef<ChampionStat>[] {
-  return [
-    championCol,
-    laneCol,
-    difficultyCol,
-    estGamesChampCol,
-    masteryTierCol,
-    { id: 'mastery_score', header: 'Mastery Score', accessorKey: 'mastery_score', cell: i => fmtScore(i.getValue<number | null>()), enableSorting: true },
-    { id: 'medium_wr', header: 'Medium WR', accessorKey: 'medium_wr', cell: i => fmtPct(i.getValue<number | null>()), enableSorting: true },
-    { id: 'high_wr', header: 'High WR', accessorKey: 'high_wr', cell: i => fmtPct(i.getValue<number | null>()), enableSorting: true },
-    { id: 'high_ratio', header: 'High Ratio', accessorKey: 'high_ratio', cell: i => fmtRatio(i.getValue<number | null>()), enableSorting: true },
-    { id: 'delta', header: 'High Δ', accessorKey: 'delta', cell: i => fmtDelta(i.getValue<number | null>()), enableSorting: true },
-  ]
-}
-
-export function getBiasInvestmentCols(): ColumnDef<ChampionStat>[] {
-  return [
-    championCol,
-    laneCol,
-    difficultyCol,
-    estGamesChampCol,
-    { id: 'investment_score', header: 'Investment Score', accessorKey: 'investment_score', cell: i => fmtScore(i.getValue<number | null>()), enableSorting: true },
-    { id: 'learning_score', header: 'Learning Score', accessorKey: 'learning_score', cell: i => fmtScore(i.getValue<number | null>()), enableSorting: true },
-    { id: 'mastery_score', header: 'Mastery Score', accessorKey: 'mastery_score', cell: i => fmtScore(i.getValue<number | null>()), enableSorting: true },
-    { id: 'low_wr', header: 'Low WR', accessorKey: 'low_wr', cell: i => fmtPct(i.getValue<number | null>()), enableSorting: true },
-    { id: 'high_wr', header: 'High WR', accessorKey: 'high_wr', cell: i => fmtPct(i.getValue<number | null>()), enableSorting: true },
   ]
 }
 
@@ -253,28 +195,9 @@ export const VIEW_CONFIGS: Record<ViewMode, ViewConfig> = {
     label: 'Best to Master',
     defaultSort: { id: 'mastery_score', desc: true },
   },
-  best_investment: {
-    label: 'Best Investment',
-    defaultSort: { id: 'investment_score', desc: true },
-  },
   all_stats: {
     label: 'All Stats',
     defaultSort: { id: 'champion', desc: false },
-  },
-  bias_easiest: {
-    label: 'Bias Easiest to Learn',
-    defaultSort: { id: 'learning_score', desc: true },
-    isBias: true,
-  },
-  bias_master: {
-    label: 'Bias Best to Master',
-    defaultSort: { id: 'mastery_score', desc: true },
-    isBias: true,
-  },
-  bias_investment: {
-    label: 'Bias Best Investment',
-    defaultSort: { id: 'investment_score', desc: true },
-    isBias: true,
   },
   games_to_50: {
     label: 'Games to 50% WR',

@@ -5,18 +5,16 @@ import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
+import ToggleButton from '@mui/material/ToggleButton'
 import type { ViewMode } from '../types/analysis'
-import { VIEW_CONFIGS } from '../utils/columns'
 
-const VIEW_GROUPS = [
-  {
-    label: 'Standard',
-    views: ['easiest_to_learn', 'best_to_master', 'best_investment', 'all_stats', 'mastery_curve'] as ViewMode[],
-  },
-  {
-    label: 'Bias (per-champion thresholds)',
-    views: ['bias_easiest', 'bias_master', 'bias_investment', 'games_to_50'] as ViewMode[],
-  },
+const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
+  { value: 'easiest_to_learn', label: 'Easiest to Learn' },
+  { value: 'best_to_master',   label: 'Best to Master' },
+  { value: 'all_stats',        label: 'All Stats' },
+  { value: 'games_to_50',      label: 'Games to 50% WR' },
+  { value: 'mastery_curve',    label: 'Mastery Curve' },
 ]
 
 const LANE_OPTIONS = ['ALL', 'Top', 'Jungle', 'Mid', 'Bot', 'Support']
@@ -63,25 +61,18 @@ export function TableControls({
       }}
     >
       {/* View selector */}
-      <FormControl size="small" sx={{ minWidth: 220 }}>
-        <InputLabel>View</InputLabel>
-        <Select
-          value={view}
-          label="View"
-          onChange={e => onViewChange(e.target.value as ViewMode)}
-        >
-          {VIEW_GROUPS.map(group => [
-            <MenuItem key={`hdr-${group.label}`} disabled divider sx={{ fontWeight: 600, fontSize: 12, opacity: 1 }}>
-              {group.label}
-            </MenuItem>,
-            ...group.views.map(v => (
-              <MenuItem key={v} value={v} sx={{ pl: 3 }}>
-                {VIEW_CONFIGS[v].label}
-              </MenuItem>
-            )),
-          ])}
-        </Select>
-      </FormControl>
+      <ToggleButtonGroup
+        value={view}
+        exclusive
+        size="small"
+        onChange={(_, val) => val && onViewChange(val as ViewMode)}
+      >
+        {VIEW_OPTIONS.map(opt => (
+          <ToggleButton key={opt.value} value={opt.value} sx={{ px: 1.5 }}>
+            {opt.label}
+          </ToggleButton>
+        ))}
+      </ToggleButtonGroup>
 
       {/* Search */}
       <TextField
