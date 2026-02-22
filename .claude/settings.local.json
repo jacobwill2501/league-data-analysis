@@ -20,7 +20,8 @@
       "Bash(ls:*)",
       "Bash(find /Users/jacwilliams/Desktop/Coding/league-data-analysis -name \".gitignore\" 2>/dev/null && git check-ignore -v output/analysis/emerald_plus_results.json web/public/data/ 2>&1)",
       "Bash(git check-ignore:*)",
-      "Bash(cd /Users/jacwilliams/Desktop/Coding/league-data-analysis/web && npx tsc --noEmit 2>&1)"
+      "Bash(cd /Users/jacwilliams/Desktop/Coding/league-data-analysis/web && npx tsc --noEmit 2>&1)",
+      "Bash(chmod +x:*)"
     ]
   }
 }

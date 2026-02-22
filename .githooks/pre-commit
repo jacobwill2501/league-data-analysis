@@ -1,0 +1,4 @@
+#!/bin/sh
+cd "$(git rev-parse --show-toplevel)/web" || exit 1
+echo "Running build check..."
+npm run build
