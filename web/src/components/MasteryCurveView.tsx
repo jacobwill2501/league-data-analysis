@@ -57,7 +57,13 @@ export function MasteryCurveView({ masteryChampionCurves }: Props) {
         <Typography color="text.secondary">Select a champion to view their win rate by mastery interval.</Typography>
       )}
 
-      {curveData && (
+      {curveData && curveData.intervals.length === 0 && (
+        <Typography color="text.secondary">
+          No mastery curve data available. Re-run <code>python src/analyze.py</code> to generate interval data.
+        </Typography>
+      )}
+
+      {curveData && curveData.intervals.length > 0 && (
         <Box>
           <Typography variant="h6" sx={{ mb: 2 }}>
             {selectedChamp} — Win Rate by Mastery Interval

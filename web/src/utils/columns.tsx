@@ -1,4 +1,5 @@
 import { type ColumnDef } from '@tanstack/react-table'
+import MuiTooltip from '@mui/material/Tooltip'
 import type { ChampionStat, GameTo50Entry, ViewMode } from '../types/analysis'
 import { fmtPct, fmtRatio, fmtDelta, fmtScore, fmtLane, fmtGames, fmtThreshold } from './format'
 
@@ -43,6 +44,16 @@ const difficultyCol: ColumnDef<ChampionStat> = {
   enableSorting: true,
 }
 
+const nullLastSortingFn = <T extends object>(
+  rowA: import('@tanstack/react-table').Row<T>,
+  rowB: import('@tanstack/react-table').Row<T>,
+  columnId: string,
+): number => {
+  const a = rowA.getValue<number | null>(columnId) ?? Infinity
+  const b = rowB.getValue<number | null>(columnId) ?? Infinity
+  return a - b
+}
+
 const estGamesChampCol: ColumnDef<ChampionStat> = {
   id: 'estimated_games',
   header: 'Est. Games',
@@ -51,6 +62,7 @@ const estGamesChampCol: ColumnDef<ChampionStat> = {
     const v = info.getValue<number | null>()
     return v === null || v === undefined ? 'N/A' : fmtGames(v)
   },
+  sortingFn: nullLastSortingFn,
   enableSorting: true,
 }
 
@@ -63,7 +75,17 @@ export function getEasiestToLearnCols(): ColumnDef<ChampionStat>[] {
     { id: 'status', header: 'Status', accessorKey: 'games_to_50_status', cell: info => info.getValue<string | null>() ?? '—', enableSorting: true },
     estGamesChampCol,
     { id: 'mastery_threshold', header: 'Mastery Threshold', accessorKey: 'mastery_threshold', cell: info => fmtThreshold(info.getValue<number | null>()), enableSorting: true },
-    { id: 'starting_winrate', header: 'Starting WR', accessorKey: 'starting_winrate', cell: info => fmtPct(info.getValue<number | null>()), enableSorting: true },
+    {
+      id: 'starting_winrate',
+      header: () => (
+        <MuiTooltip title="Win rate in the lowest mastery interval (0–1,000 points) — approximates performance in a player's first 1–2 games on this champion">
+          <span style={{ cursor: 'help', borderBottom: '1px dotted currentColor' }}>Starting WR</span>
+        </MuiTooltip>
+      ),
+      accessorKey: 'starting_winrate',
+      cell: info => fmtPct(info.getValue<number | null>()),
+      enableSorting: true,
+    },
   ]
 }
 
@@ -192,6 +214,7 @@ export function getGamesTo50Cols(): ColumnDef<GameTo50Entry>[] {
         const v = info.getValue<number | null>()
         return v === null || v === undefined ? 'N/A' : fmtGames(v)
       },
+      sortingFn: nullLastSortingFn,
       enableSorting: true,
     },
     {
