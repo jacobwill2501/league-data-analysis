@@ -1,3 +1,10 @@
+import Box from '@mui/material/Box'
+import FormControl from '@mui/material/FormControl'
+import InputLabel from '@mui/material/InputLabel'
+import Select from '@mui/material/Select'
+import MenuItem from '@mui/material/MenuItem'
+import TextField from '@mui/material/TextField'
+import Typography from '@mui/material/Typography'
 import type { ViewMode } from '../types/analysis'
 import { VIEW_CONFIGS } from '../utils/columns'
 
@@ -42,65 +49,83 @@ export function TableControls({
   totalCount,
 }: Props) {
   return (
-    <div className="flex flex-wrap items-center gap-3 px-4 py-2 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-      {/* View Selector */}
-      <select
-        value={view}
-        onChange={e => onViewChange(e.target.value as ViewMode)}
-        className="select-input"
-      >
-        {VIEW_GROUPS.map(group => (
-          <optgroup key={group.label} label={group.label}>
-            {group.views.map(v => (
-              <option key={v} value={v}>
+    <Box
+      sx={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        gap: 1.5,
+        px: 2,
+        py: 1.5,
+        borderBottom: 1,
+        borderColor: 'divider',
+        bgcolor: 'background.paper',
+      }}
+    >
+      {/* View selector */}
+      <FormControl size="small" sx={{ minWidth: 220 }}>
+        <InputLabel>View</InputLabel>
+        <Select
+          value={view}
+          label="View"
+          onChange={e => onViewChange(e.target.value as ViewMode)}
+        >
+          {VIEW_GROUPS.map(group => [
+            <MenuItem key={`hdr-${group.label}`} disabled divider sx={{ fontWeight: 600, fontSize: 12, opacity: 1 }}>
+              {group.label}
+            </MenuItem>,
+            ...group.views.map(v => (
+              <MenuItem key={v} value={v} sx={{ pl: 3 }}>
                 {VIEW_CONFIGS[v].label}
-              </option>
-            ))}
-          </optgroup>
-        ))}
-      </select>
+              </MenuItem>
+            )),
+          ])}
+        </Select>
+      </FormControl>
 
       {/* Search */}
-      <input
-        type="search"
+      <TextField
+        size="small"
+        label="Search champion"
         value={search}
         onChange={e => onSearchChange(e.target.value)}
-        placeholder="Search champion…"
-        className="select-input w-40"
+        sx={{ width: 160 }}
       />
 
-      {/* Lane Filter */}
-      <select
-        value={lane}
-        onChange={e => onLaneChange(e.target.value)}
-        className="select-input"
-      >
-        {LANE_OPTIONS.map(l => (
-          <option key={l} value={l}>
-            {l === 'ALL' ? 'All Lanes' : l}
-          </option>
-        ))}
-      </select>
-
-      {/* Tier Filter */}
-      {tierOptions.length > 0 && (
-        <select
-          value={tierFilter}
-          onChange={e => onTierFilterChange(e.target.value)}
-          className="select-input"
-        >
-          <option value="">All Tiers</option>
-          {tierOptions.map(t => (
-            <option key={t} value={t}>
-              {t}
-            </option>
+      {/* Lane filter */}
+      <FormControl size="small" sx={{ minWidth: 110 }}>
+        <InputLabel>Lane</InputLabel>
+        <Select value={lane} label="Lane" onChange={e => onLaneChange(e.target.value)}>
+          {LANE_OPTIONS.map(l => (
+            <MenuItem key={l} value={l}>
+              {l === 'ALL' ? 'All Lanes' : l}
+            </MenuItem>
           ))}
-        </select>
+        </Select>
+      </FormControl>
+
+      {/* Tier filter (contextual) */}
+      {tierOptions.length > 0 && (
+        <FormControl size="small" sx={{ minWidth: 190 }}>
+          <InputLabel>Tier</InputLabel>
+          <Select
+            value={tierFilter}
+            label="Tier"
+            onChange={e => onTierFilterChange(e.target.value)}
+          >
+            <MenuItem value="">All Tiers</MenuItem>
+            {tierOptions.map(t => (
+              <MenuItem key={t} value={t}>
+                {t}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
       )}
 
-      <span className="ml-auto text-sm text-gray-500 dark:text-gray-400 shrink-0">
+      <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto' }}>
         Showing {rowCount.toLocaleString()} of {totalCount.toLocaleString()}
-      </span>
-    </div>
+      </Typography>
+    </Box>
   )
 }

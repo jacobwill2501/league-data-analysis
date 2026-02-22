@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -6,7 +7,17 @@ import {
   type ColumnDef,
   type SortingState,
 } from '@tanstack/react-table'
-import { useState, useEffect } from 'react'
+import Table from '@mui/material/Table'
+import TableHead from '@mui/material/TableHead'
+import TableBody from '@mui/material/TableBody'
+import TableRow from '@mui/material/TableRow'
+import TableCell from '@mui/material/TableCell'
+import TableSortLabel from '@mui/material/TableSortLabel'
+import TableContainer from '@mui/material/TableContainer'
+import Paper from '@mui/material/Paper'
+import Chip from '@mui/material/Chip'
+import Box from '@mui/material/Box'
+import Typography from '@mui/material/Typography'
 import type { ChampionStat, GameTo50Entry, ViewMode } from '../types/analysis'
 import { ChampionIcon } from './ChampionIcon'
 import { fmtLane } from '../utils/format'
@@ -22,122 +33,154 @@ import {
   VIEW_CONFIGS,
 } from '../utils/columns'
 
-// ── Tier badge ────────────────────────────────────────────────────────────────
+// ── Tier chip colors ──────────────────────────────────────────────────────────
 
-const LEARNING_TIER_COLORS: Record<string, string> = {
-  'Safe Blind Pick': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
-  'Low Risk': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  'Moderate': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-  'High Risk': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
-  'Avoid': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-  'Instantly Viable': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
+type ChipColor = 'success' | 'warning' | 'error' | 'default' | 'info'
+
+const LEARNING_TIER_COLOR: Record<string, ChipColor> = {
+  'Safe Blind Pick': 'success',
+  'Low Risk': 'success',
+  'Moderate': 'warning',
+  'High Risk': 'warning',
+  'Avoid': 'error',
 }
 
-const MASTERY_TIER_COLORS: Record<string, string> = {
-  'Exceptional Payoff': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
-  'High Payoff': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  'Moderate Payoff': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-  'Low Payoff': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
-  'Not Worth Mastering': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+const MASTERY_TIER_COLOR: Record<string, ChipColor> = {
+  'Exceptional Payoff': 'success',
+  'High Payoff': 'success',
+  'Moderate Payoff': 'warning',
+  'Low Payoff': 'warning',
+  'Not Worth Mastering': 'error',
 }
 
-const DIFFICULTY_COLORS: Record<string, string> = {
-  'Instantly Viable': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
-  'Extremely Hard to Learn': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-  'Never Viable': 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+const DIFFICULTY_COLOR: Record<string, ChipColor> = {
+  'Instantly Viable': 'success',
+  'Extremely Hard to Learn': 'error',
+  'Never Viable': 'default',
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  'always above 50%': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
-  'crosses 50%': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  'never reaches 50%': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-  'low data': 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+const STATUS_COLOR: Record<string, ChipColor> = {
+  'always above 50%': 'success',
+  'crosses 50%': 'info',
+  'never reaches 50%': 'error',
+  'low data': 'default',
 }
 
-function Badge({ text, colorMap }: { text: string; colorMap: Record<string, string> }) {
-  const cls = colorMap[text] ?? 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+function TierChip({ label, colorMap }: { label: string; colorMap: Record<string, ChipColor> }) {
   return (
-    <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium whitespace-nowrap ${cls}`}>
-      {text}
-    </span>
+    <Chip
+      label={label}
+      color={colorMap[label] ?? 'default'}
+      size="small"
+      variant="outlined"
+      sx={{ fontSize: 11 }}
+    />
   )
 }
 
-// ── WR cell with color ────────────────────────────────────────────────────────
+// ── Champion cell ─────────────────────────────────────────────────────────────
 
-function WrCell({ value }: { value: string }) {
-  // parse the pct back to determine color
-  const num = parseFloat(value)
-  const color = isNaN(num)
-    ? ''
-    : num < 48
-    ? 'text-red-600 dark:text-red-400'
-    : num > 52
-    ? 'text-emerald-600 dark:text-emerald-400'
-    : 'text-gray-700 dark:text-gray-300'
-  return <span className={`font-mono text-sm ${color}`}>{value}</span>
-}
-
-// ── Cell renderer dispatcher ──────────────────────────────────────────────────
-
-function renderCell(colId: string, value: unknown) {
-  const str = String(value ?? '—')
-
-  if (['low_wr', 'medium_wr', 'high_wr', 'starting_winrate'].includes(colId)) {
-    return <WrCell value={str} />
-  }
-  if (colId === 'learning_tier') {
-    return str === '—' ? str : <Badge text={str} colorMap={LEARNING_TIER_COLORS} />
-  }
-  if (colId === 'mastery_tier') {
-    return str === '—' ? str : <Badge text={str} colorMap={MASTERY_TIER_COLORS} />
-  }
-  if (colId === 'difficulty') {
-    return str === '—' ? str : <Badge text={str} colorMap={DIFFICULTY_COLORS} />
-  }
-  if (colId === 'status') {
-    return str === '—' ? str : <Badge text={str} colorMap={STATUS_COLORS} />
-  }
-  if (['low_delta', 'delta'].includes(colId)) {
-    const cls = str.startsWith('+')
-      ? 'text-emerald-600 dark:text-emerald-400 font-mono text-sm'
-      : str.startsWith('-')
-      ? 'text-red-600 dark:text-red-400 font-mono text-sm'
-      : 'font-mono text-sm'
-    return <span className={cls}>{str}</span>
-  }
-  if (['low_ratio', 'high_ratio'].includes(colId)) {
-    return <span className="font-mono text-sm">{str}</span>
-  }
-  return str
-}
-
-// ── Champion cell (icon + name) ───────────────────────────────────────────────
-
-function ChampionCell({ name, lane }: { name: string; lane?: string | null }) {
+function ChampionCell({ name }: { name: string }) {
   return (
-    <span className="flex items-center gap-2 min-w-0">
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
       <ChampionIcon name={name} />
-      <span className="truncate font-medium text-gray-900 dark:text-gray-100">{name}</span>
-      {lane && (
-        <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0 hidden sm:inline">
-          {fmtLane(lane)}
-        </span>
-      )}
-    </span>
+      <Typography variant="body2" fontWeight={500} noWrap>
+        {name}
+      </Typography>
+    </Box>
   )
 }
 
-// ── Main table ────────────────────────────────────────────────────────────────
+// ── Generic sortable table ────────────────────────────────────────────────────
 
-interface Props<T extends object> {
+interface TableProps<T extends object> {
   data: T[]
   columns: ColumnDef<T>[]
   view: ViewMode
-  isG50?: boolean
 }
 
-function Table<T extends object>({ data, columns, view }: Props<T>) {
+/**
+ * Render a table cell.
+ * - rawValue: the raw JS value from cell.getValue() (number, string, null, etc.)
+ * - formattedNode: the React node returned by flexRender (already formatted string
+ *   like "48.57%"). Never call String() on this — it may be a React element.
+ */
+function renderCell(colId: string, rawValue: unknown, formattedNode: React.ReactNode) {
+  // Champion (icon + name) — rawValue is the champion name string
+  if (colId === 'champion') {
+    return <ChampionCell name={rawValue as string} />
+  }
+
+  // Lane display — rawValue is the raw lane key e.g. "TOP"
+  if (colId === 'lane') {
+    return <Typography variant="body2">{fmtLane(rawValue as string | null)}</Typography>
+  }
+
+  // Win-rate cells — colour from raw 0–1 value, display pre-formatted node
+  if (['low_wr', 'medium_wr', 'high_wr', 'starting_winrate'].includes(colId)) {
+    const raw = rawValue as number | null
+    const pct = raw != null ? raw * 100 : null
+    const color =
+      pct == null  ? 'text.primary'
+      : pct < 48   ? 'error.main'
+      : pct > 52   ? 'success.main'
+      : 'text.primary'
+    return (
+      <Typography variant="body2" component="span" color={color} fontFamily="monospace">
+        {formattedNode}
+      </Typography>
+    )
+  }
+
+  // Delta cells — colour from sign of raw value
+  if (['low_delta', 'delta'].includes(colId)) {
+    const raw = rawValue as number | null
+    const color =
+      raw == null  ? 'text.primary'
+      : raw > 0    ? 'success.main'
+      : raw < 0    ? 'error.main'
+      : 'text.primary'
+    return (
+      <Typography variant="body2" component="span" color={color} fontFamily="monospace">
+        {formattedNode}
+      </Typography>
+    )
+  }
+
+  // Tier / badge columns — rawValue is the raw tier string (or null)
+  if (colId === 'learning_tier') {
+    const str = rawValue as string | null
+    return str ? <TierChip label={str} colorMap={LEARNING_TIER_COLOR} /> : <>—</>
+  }
+  if (colId === 'mastery_tier') {
+    const str = rawValue as string | null
+    return str ? <TierChip label={str} colorMap={MASTERY_TIER_COLOR} /> : <>—</>
+  }
+  if (colId === 'difficulty') {
+    const str = rawValue as string | null
+    return str ? <TierChip label={str} colorMap={DIFFICULTY_COLOR} /> : <>—</>
+  }
+  if (colId === 'status') {
+    const str = rawValue as string | null
+    return str ? <TierChip label={str} colorMap={STATUS_COLOR} /> : <>—</>
+  }
+
+  // Numeric mono columns — display pre-formatted node in monospace
+  if (['low_ratio', 'high_ratio', 'low_games', 'medium_games', 'high_games',
+       'learning_score', 'mastery_score', 'investment_score',
+       'estimated_games', 'mastery_threshold'].includes(colId)) {
+    return (
+      <Typography variant="body2" component="span" fontFamily="monospace">
+        {formattedNode}
+      </Typography>
+    )
+  }
+
+  // Default — return formattedNode directly (already a valid React node)
+  return formattedNode
+}
+
+function SortableTable<T extends object>({ data, columns, view }: TableProps<T>) {
   const defaultSort = VIEW_CONFIGS[view].defaultSort
   const [sorting, setSorting] = useState<SortingState>([defaultSort])
 
@@ -155,82 +198,70 @@ function Table<T extends object>({ data, columns, view }: Props<T>) {
   })
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm border-collapse">
-        <thead className="sticky top-[49px] z-10 bg-gray-100 dark:bg-gray-800">
+    <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 0 }}>
+      <Table size="small" stickyHeader>
+        <TableHead>
           {table.getHeaderGroups().map(hg => (
-            <tr key={hg.id}>
-              <th className="px-2 py-2 text-left font-semibold text-gray-600 dark:text-gray-400 w-10 select-none">
-                #
-              </th>
+            <TableRow key={hg.id}>
+              <TableCell sx={{ width: 48, color: 'text.secondary', fontWeight: 600 }}>#</TableCell>
               {hg.headers.map(header => (
-                <th
+                <TableCell
                   key={header.id}
-                  onClick={header.column.getToggleSortingHandler()}
-                  className={[
-                    'px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-400 whitespace-nowrap select-none',
-                    header.column.getCanSort() ? 'cursor-pointer hover:text-gray-900 dark:hover:text-gray-100' : '',
-                  ].join(' ')}
+                  sortDirection={header.column.getIsSorted() || false}
+                  sx={{ whiteSpace: 'nowrap', fontWeight: 600 }}
                 >
-                  {flexRender(header.column.columnDef.header, header.getContext())}
-                  {header.column.getIsSorted() === 'asc' && ' ↑'}
-                  {header.column.getIsSorted() === 'desc' && ' ↓'}
-                </th>
+                  {header.column.getCanSort() ? (
+                    <TableSortLabel
+                      active={!!header.column.getIsSorted()}
+                      direction={header.column.getIsSorted() || 'asc'}
+                      onClick={header.column.getToggleSortingHandler()}
+                    >
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                    </TableSortLabel>
+                  ) : (
+                    flexRender(header.column.columnDef.header, header.getContext())
+                  )}
+                </TableCell>
               ))}
-            </tr>
+            </TableRow>
           ))}
-        </thead>
-        <tbody>
+        </TableHead>
+
+        <TableBody>
           {table.getRowModel().rows.map((row, idx) => (
-            <tr
+            <TableRow
               key={row.id}
-              className={[
-                'border-b border-gray-100 dark:border-gray-800 hover:bg-blue-50 dark:hover:bg-gray-800 transition-colors',
-                idx % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-850',
-              ].join(' ')}
+              hover
+              sx={{ '&:nth-of-type(even)': { bgcolor: 'action.hover' } }}
             >
-              <td className="px-2 py-1.5 text-gray-400 dark:text-gray-600 text-right tabular-nums">
+              <TableCell sx={{ color: 'text.disabled', textAlign: 'right' }}>
                 {idx + 1}
-              </td>
-              {row.getVisibleCells().map(cell => {
-                const colId = cell.column.id
-                const rawValue = cell.getValue()
-
-                // Special-case: champion column gets icon
-                if (colId === 'champion') {
-                  const champName = rawValue as string
-                  // For G50 view the champion field accessor is 'champion_name'
-                  return (
-                    <td key={cell.id} className="px-3 py-1.5 min-w-[160px]">
-                      <ChampionCell name={champName} />
-                    </td>
-                  )
-                }
-
-                return (
-                  <td
-                    key={cell.id}
-                    className="px-3 py-1.5 whitespace-nowrap text-gray-700 dark:text-gray-300"
-                  >
-                    {renderCell(colId, rawValue)}
-                  </td>
-                )
-              })}
-            </tr>
+              </TableCell>
+              {row.getVisibleCells().map(cell => (
+                <TableCell key={cell.id} sx={{ whiteSpace: 'nowrap' }}>
+                  {renderCell(
+                    cell.column.id,
+                    cell.getValue(),
+                    // formatted string from the column's cell function
+                    flexRender(cell.column.columnDef.cell, cell.getContext()),
+                  )}
+                </TableCell>
+              ))}
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
 
       {table.getRowModel().rows.length === 0 && (
-        <div className="py-16 text-center text-gray-400 dark:text-gray-600">
-          No champions match the current filters.
-        </div>
+        <Box sx={{ py: 10, textAlign: 'center' }}>
+          <Typography color="text.secondary">No champions match the current filters.</Typography>
+        </Box>
       )}
-    </div>
+    </TableContainer>
   )
 }
 
-// ── Typed wrappers ────────────────────────────────────────────────────────────
+// ── Public typed wrappers ─────────────────────────────────────────────────────
 
 interface ChampionTableProps {
   data: ChampionStat[]
@@ -243,30 +274,23 @@ interface G50TableProps {
 
 export function ChampionTable({ data, view }: ChampionTableProps) {
   const cols =
-    view === 'easiest_to_learn'
-      ? getEasiestToLearnCols()
-      : view === 'best_to_master'
-      ? getBestToMasterCols()
-      : view === 'best_investment'
-      ? getBestInvestmentCols()
-      : view === 'dynamic_easiest'
-      ? getDynamicEasiestCols()
-      : view === 'dynamic_master'
-      ? getDynamicMasterCols()
-      : view === 'dynamic_investment'
-      ? getDynamicInvestmentCols()
-      : getAllStatsCols()
+    view === 'easiest_to_learn'  ? getEasiestToLearnCols()
+    : view === 'best_to_master'  ? getBestToMasterCols()
+    : view === 'best_investment' ? getBestInvestmentCols()
+    : view === 'dynamic_easiest' ? getDynamicEasiestCols()
+    : view === 'dynamic_master'  ? getDynamicMasterCols()
+    : view === 'dynamic_investment' ? getDynamicInvestmentCols()
+    : getAllStatsCols()
 
-  return <Table data={data} columns={cols as ColumnDef<ChampionStat>[]} view={view} />
+  return <SortableTable data={data} columns={cols as ColumnDef<ChampionStat>[]} view={view} />
 }
 
 export function G50Table({ data }: G50TableProps) {
   return (
-    <Table
+    <SortableTable
       data={data}
       columns={getGamesTo50Cols() as ColumnDef<GameTo50Entry>[]}
       view="games_to_50"
-      isG50
     />
   )
 }

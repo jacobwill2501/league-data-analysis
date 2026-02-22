@@ -1,18 +1,9 @@
-@import "tailwindcss";
-
-@layer base {
-  html {
-    font-family: system-ui, -apple-system, sans-serif;
-  }
-
-  /* bg-gray-850 utility (between 800 and 900) */
-  .bg-gray-850 {
-    background-color: #1a202c;
-  }
+/* MUI handles all theming — minimal global resets only */
+*, *::before, *::after {
+  box-sizing: border-box;
 }
 
-@layer components {
-  .select-input {
-    @apply px-2.5 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500;
-  }
+body {
+  margin: 0;
+  font-family: 'Roboto', system-ui, -apple-system, sans-serif;
 }

@@ -14,7 +14,8 @@
       "Bash(sqlite3:*)",
       "Bash(grep:*)",
       "Bash(tail:*)",
-      "Bash(cd /Users/jacwilliams/Desktop/Coding/league-data-analysis/web && npm run build 2>&1)"
+      "Bash(cd /Users/jacwilliams/Desktop/Coding/league-data-analysis/web && npm run build 2>&1)",
+      "Bash(npm run:*)"
     ]
   }
 }

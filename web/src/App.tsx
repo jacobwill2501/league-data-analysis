@@ -1,12 +1,16 @@
 import { useMemo, useState } from 'react'
+import { createTheme, ThemeProvider, CssBaseline } from '@mui/material'
+import Box from '@mui/material/Box'
+import CircularProgress from '@mui/material/CircularProgress'
+import Alert from '@mui/material/Alert'
+import Typography from '@mui/material/Typography'
 import type { ChampionStat, EloFilter, GameTo50Entry, ViewMode } from './types/analysis'
 import { useAnalysisData } from './hooks/useAnalysisData'
-import { useTheme } from './hooks/useTheme'
+import { useThemeMode } from './hooks/useTheme'
 import { Header } from './components/Header'
 import { TableControls } from './components/TableControls'
 import { ChampionTable, G50Table } from './components/ChampionTable'
 
-// Lane values from API → display names
 const LANE_MAP: Record<string, string> = {
   TOP: 'Top',
   JUNGLE: 'Jungle',
@@ -20,7 +24,6 @@ function getLaneDisplay(lane: string | null | undefined): string {
   return LANE_MAP[lane] ?? lane
 }
 
-// All unique learning tiers (ordered)
 const LEARNING_TIERS = [
   'Safe Blind Pick',
   'Low Risk',
@@ -50,7 +53,25 @@ function getTierField(view: ViewMode): keyof ChampionStat | null {
 }
 
 export function App() {
-  const { theme, toggle } = useTheme()
+  const { mode, toggle } = useThemeMode()
+
+  const theme = useMemo(
+    () =>
+      createTheme({
+        palette: { mode },
+        components: {
+          MuiTableCell: {
+            styleOverrides: {
+              stickyHeader: ({ theme }) => ({
+                backgroundColor: theme.palette.background.paper,
+              }),
+            },
+          },
+        },
+      }),
+    [mode]
+  )
+
   const [elo, setElo] = useState<EloFilter>('emerald_plus')
   const [view, setView] = useState<ViewMode>('easiest_to_learn')
   const [search, setSearch] = useState('')
@@ -59,32 +80,22 @@ export function App() {
 
   const { data, loading, error } = useAnalysisData(elo)
 
-  // Reset tier filter when view changes
   const handleViewChange = (v: ViewMode) => {
     setView(v)
     setTierFilter('')
   }
 
-  // Determine which dataset to use based on view
   const sourceRows = useMemo((): ChampionStat[] => {
     if (!data) return []
     switch (view) {
-      case 'easiest_to_learn':
-        return data.easiestToLearn
-      case 'best_to_master':
-        return data.bestToMaster
-      case 'best_investment':
-        return data.bestInvestment
-      case 'all_stats':
-        return data.champions
-      case 'dynamic_easiest':
-        return data.dynamicEasiest
-      case 'dynamic_master':
-        return data.dynamicMaster
-      case 'dynamic_investment':
-        return data.dynamicInvestment
-      default:
-        return data.champions
+      case 'easiest_to_learn': return data.easiestToLearn
+      case 'best_to_master':   return data.bestToMaster
+      case 'best_investment':  return data.bestInvestment
+      case 'all_stats':        return data.champions
+      case 'dynamic_easiest':  return data.dynamicEasiest
+      case 'dynamic_master':   return data.dynamicMaster
+      case 'dynamic_investment': return data.dynamicInvestment
+      default:                 return data.champions
     }
   }, [data, view])
 
@@ -93,7 +104,6 @@ export function App() {
     return data.gameTo50
   }, [data, view])
 
-  // Filtered champion rows
   const filteredChampions = useMemo((): ChampionStat[] => {
     if (view === 'games_to_50') return []
     let rows = sourceRows
@@ -104,10 +114,7 @@ export function App() {
     }
 
     if (lane !== 'ALL') {
-      rows = rows.filter(r => {
-        const display = getLaneDisplay(r.most_common_lane)
-        return display === lane
-      })
+      rows = rows.filter(r => getLaneDisplay(r.most_common_lane) === lane)
     }
 
     const tierField = getTierField(view)
@@ -118,7 +125,6 @@ export function App() {
     return rows
   }, [sourceRows, search, lane, tierFilter, view])
 
-  // Filtered G50 rows
   const filteredG50 = useMemo((): GameTo50Entry[] => {
     if (view !== 'games_to_50') return []
     let rows = sourceG50
@@ -129,75 +135,64 @@ export function App() {
     }
 
     if (lane !== 'ALL') {
-      rows = rows.filter(r => {
-        const display = getLaneDisplay(r.lane)
-        return display === lane
-      })
+      rows = rows.filter(r => getLaneDisplay(r.lane) === lane)
     }
 
     return rows
   }, [sourceG50, search, lane, view])
 
-  const tierOptions = getTierOptions(view)
   const isG50 = view === 'games_to_50'
-
   const rowCount = isG50 ? filteredG50.length : filteredChampions.length
   const totalCount = isG50 ? sourceG50.length : sourceRows.length
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100">
-      <Header elo={elo} onEloChange={setElo} theme={theme} onThemeToggle={toggle} />
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <Header elo={elo} onEloChange={setElo} mode={mode} onModeToggle={toggle} />
 
-      <TableControls
-        view={view}
-        onViewChange={handleViewChange}
-        search={search}
-        onSearchChange={setSearch}
-        lane={lane}
-        onLaneChange={setLane}
-        tierFilter={tierFilter}
-        onTierFilterChange={setTierFilter}
-        tierOptions={tierOptions}
-        rowCount={rowCount}
-        totalCount={totalCount}
-      />
+        <TableControls
+          view={view}
+          onViewChange={handleViewChange}
+          search={search}
+          onSearchChange={setSearch}
+          lane={lane}
+          onLaneChange={setLane}
+          tierFilter={tierFilter}
+          onTierFilterChange={setTierFilter}
+          tierOptions={getTierOptions(view)}
+          rowCount={rowCount}
+          totalCount={totalCount}
+        />
 
-      <main>
-        {loading && (
-          <div className="flex items-center justify-center py-24 text-gray-400 dark:text-gray-600">
-            <svg className="animate-spin h-8 w-8 mr-3" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-            </svg>
-            Loading data…
-          </div>
-        )}
+        <Box component="main" sx={{ flex: 1 }}>
+          {loading && (
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 15, gap: 2 }}>
+              <CircularProgress size={28} />
+              <Typography color="text.secondary">Loading data…</Typography>
+            </Box>
+          )}
 
-        {!loading && error && (
-          <div className="flex items-center justify-center py-24">
-            <div className="text-center">
-              <p className="text-red-500 text-lg font-medium mb-2">Failed to load data</p>
-              <p className="text-gray-500 text-sm">{error}</p>
-              <p className="text-gray-400 text-sm mt-1">
-                Make sure the JSON files are in <code>public/data/</code>
-              </p>
-            </div>
-          </div>
-        )}
+          {!loading && error && (
+            <Box sx={{ p: 4 }}>
+              <Alert severity="error">
+                <strong>Failed to load data</strong> — {error}
+                <br />
+                Make sure the JSON files are in <code>public/data/</code>.
+              </Alert>
+            </Box>
+          )}
 
-        {!loading && !error && data && (
-          <>
-            {isG50 ? (
-              <G50Table data={filteredG50} />
-            ) : (
-              <ChampionTable
-                data={filteredChampions}
-                view={view as Exclude<ViewMode, 'games_to_50'>}
-              />
-            )}
-          </>
-        )}
-      </main>
-    </div>
+          {!loading && !error && data && (
+            isG50
+              ? <G50Table data={filteredG50} />
+              : <ChampionTable
+                  data={filteredChampions}
+                  view={view as Exclude<ViewMode, 'games_to_50'>}
+                />
+          )}
+        </Box>
+      </Box>
+    </ThemeProvider>
   )
 }

@@ -1,3 +1,13 @@
+import AppBar from '@mui/material/AppBar'
+import Toolbar from '@mui/material/Toolbar'
+import Typography from '@mui/material/Typography'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
+import ToggleButton from '@mui/material/ToggleButton'
+import IconButton from '@mui/material/IconButton'
+import Tooltip from '@mui/material/Tooltip'
+import Brightness4Icon from '@mui/icons-material/Brightness4'
+import Brightness7Icon from '@mui/icons-material/Brightness7'
+import type { PaletteMode } from '@mui/material'
 import type { EloFilter } from '../types/analysis'
 
 const ELO_OPTIONS: { value: EloFilter; label: string }[] = [
@@ -9,41 +19,38 @@ const ELO_OPTIONS: { value: EloFilter; label: string }[] = [
 interface Props {
   elo: EloFilter
   onEloChange: (elo: EloFilter) => void
-  theme: 'dark' | 'light'
-  onThemeToggle: () => void
+  mode: PaletteMode
+  onModeToggle: () => void
 }
 
-export function Header({ elo, onEloChange, theme, onThemeToggle }: Props) {
+export function Header({ elo, onEloChange, mode, onModeToggle }: Props) {
   return (
-    <header className="sticky top-0 z-20 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 py-3 flex items-center gap-4 flex-wrap">
-      <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100 shrink-0">
-        Champion Mastery Analysis
-      </h1>
+    <AppBar position="sticky" color="default" elevation={1}>
+      <Toolbar variant="dense" sx={{ gap: 2, flexWrap: 'wrap' }}>
+        <Typography variant="h6" fontWeight="bold" sx={{ flexShrink: 0 }}>
+          Champion Mastery Analysis
+        </Typography>
 
-      <div className="flex gap-1 ml-auto shrink-0">
-        {ELO_OPTIONS.map(opt => (
-          <button
-            key={opt.value}
-            onClick={() => onEloChange(opt.value)}
-            className={[
-              'px-3 py-1.5 rounded text-sm font-medium transition-colors',
-              elo === opt.value
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700',
-            ].join(' ')}
-          >
-            {opt.label}
-          </button>
-        ))}
-      </div>
+        <ToggleButtonGroup
+          value={elo}
+          exclusive
+          size="small"
+          onChange={(_, val) => val && onEloChange(val as EloFilter)}
+          sx={{ ml: 'auto' }}
+        >
+          {ELO_OPTIONS.map(opt => (
+            <ToggleButton key={opt.value} value={opt.value} sx={{ px: 1.5 }}>
+              {opt.label}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
 
-      <button
-        onClick={onThemeToggle}
-        aria-label="Toggle theme"
-        className="shrink-0 w-9 h-9 flex items-center justify-center rounded text-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-      >
-        {theme === 'dark' ? '☀️' : '🌙'}
-      </button>
-    </header>
+        <Tooltip title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
+          <IconButton onClick={onModeToggle} size="small">
+            {mode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
+          </IconButton>
+        </Tooltip>
+      </Toolbar>
+    </AppBar>
   )
 }

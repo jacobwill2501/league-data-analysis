@@ -5,7 +5,7 @@ export function fmtPct(val: number | null | undefined): string {
 
 export function fmtRatio(val: number | null | undefined): string {
   if (val === null || val === undefined) return '—'
-  return val.toFixed(3)
+  return val.toFixed(2)
 }
 
 export function fmtDelta(val: number | null | undefined): string {
