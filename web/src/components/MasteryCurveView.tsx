@@ -13,19 +13,25 @@ import {
   ReferenceLine,
   ResponsiveContainer,
 } from 'recharts'
-import type { MasteryChampionCurve } from '../types/analysis'
+import type { MasteryChampionCurve, MasteryInterval } from '../types/analysis'
 import { useTheme } from '@mui/material/styles'
+
+const getMid = (iv: MasteryInterval): number => {
+  if (iv.min === 0) return 500
+  if (iv.max === null) return iv.min * 1.5
+  return (iv.min + iv.max) / 2
+}
 
 interface Props {
   masteryChampionCurves: Record<string, MasteryChampionCurve>
 }
 
-function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: { payload: { win_rate: number; games: number } }[]; label?: string }) {
+function CustomTooltip({ active, payload }: { active?: boolean; payload?: { payload: MasteryInterval & { mid: number } }[] }) {
   if (!active || !payload?.length) return null
   const d = payload[0].payload
   return (
     <Box sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', p: 1.5, borderRadius: 1 }}>
-      <Typography variant="body2" fontWeight={600} sx={{ mb: 0.5 }}>{label}</Typography>
+      <Typography variant="body2" fontWeight={600} sx={{ mb: 0.5 }}>{d.label}</Typography>
       <Typography variant="body2" fontFamily="monospace" color={d.win_rate >= 0.5 ? 'success.main' : 'error.main'}>
         WR: {(d.win_rate * 100).toFixed(2)}%
       </Typography>
@@ -42,6 +48,27 @@ export function MasteryCurveView({ masteryChampionCurves }: Props) {
 
   const championNames = Object.keys(masteryChampionCurves).sort()
   const curveData = selectedChamp ? masteryChampionCurves[selectedChamp] : null
+  const chartData = curveData ? curveData.intervals.map(iv => ({ ...iv, mid: getMid(iv) })) : []
+
+  const AngledTick = ({ x, y, payload }: { x?: number; y?: number; payload?: { value: number } }) => {
+    const iv = chartData.find(d => d.mid === payload?.value)
+    const label = iv ? iv.label : String(payload?.value ?? '')
+    return (
+      <g transform={`translate(${x ?? 0},${y ?? 0})`}>
+        <text
+          x={0}
+          y={0}
+          dy={10}
+          textAnchor="end"
+          fill={theme.palette.text.secondary}
+          fontSize={11}
+          transform="rotate(-35)"
+        >
+          {label}
+        </text>
+      </g>
+    )
+  }
 
   return (
     <Box sx={{ p: 3 }}>
@@ -69,12 +96,16 @@ export function MasteryCurveView({ masteryChampionCurves }: Props) {
             {selectedChamp} — Win Rate by Mastery Interval
           </Typography>
           <ResponsiveContainer width="100%" height={400}>
-            <LineChart data={curveData.intervals} margin={{ top: 10, right: 40, left: 10, bottom: 20 }}>
+            <LineChart data={chartData} margin={{ top: 10, right: 40, left: 10, bottom: 50 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
               <XAxis
-                dataKey="label"
-                tick={{ fontSize: 12, fill: theme.palette.text.secondary }}
-                label={{ value: 'Mastery Points', position: 'insideBottom', offset: -10, fontSize: 12, fill: theme.palette.text.secondary }}
+                type="number"
+                dataKey="mid"
+                scale="log"
+                domain={['auto', 'auto']}
+                ticks={chartData.map(d => d.mid)}
+                tick={<AngledTick />}
+                label={{ value: 'Mastery Points', position: 'insideBottom', offset: -35, fontSize: 12, fill: theme.palette.text.secondary }}
               />
               <YAxis
                 domain={[0.38, 0.64]}
