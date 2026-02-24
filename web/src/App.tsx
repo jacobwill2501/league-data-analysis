@@ -4,12 +4,12 @@ import Box from '@mui/material/Box'
 import CircularProgress from '@mui/material/CircularProgress'
 import Alert from '@mui/material/Alert'
 import Typography from '@mui/material/Typography'
-import type { ChampionStat, EloFilter, GameTo50Entry, ViewMode } from './types/analysis'
+import type { ChampionStat, EloFilter, ViewMode } from './types/analysis'
 import { useAnalysisData } from './hooks/useAnalysisData'
 import { useThemeMode } from './hooks/useTheme'
 import { Header } from './components/Header'
 import { TableControls } from './components/TableControls'
-import { ChampionTable, G50Table } from './components/ChampionTable'
+import { ChampionTable } from './components/ChampionTable'
 import { MasteryCurveView } from './components/MasteryCurveView'
 
 const LANE_MAP: Record<string, string> = {
@@ -25,33 +25,6 @@ function getLaneDisplay(lane: string | null | undefined): string {
   return LANE_MAP[lane] ?? lane
 }
 
-const LEARNING_TIERS = [
-  'Safe Blind Pick',
-  'Low Risk',
-  'Moderate',
-  'High Risk',
-  'Avoid',
-]
-
-const MASTERY_TIERS = [
-  'Exceptional Payoff',
-  'High Payoff',
-  'Moderate Payoff',
-  'Low Payoff',
-  'Not Worth Mastering',
-]
-
-function getTierOptions(view: ViewMode): string[] {
-  if (view === 'easiest_to_learn') return LEARNING_TIERS
-  if (view === 'best_to_master') return MASTERY_TIERS
-  return []
-}
-
-function getTierField(view: ViewMode): keyof ChampionStat | null {
-  if (view === 'easiest_to_learn') return 'learning_tier'
-  if (view === 'best_to_master') return 'mastery_tier'
-  return null
-}
 
 export function App() {
   const { mode, toggle } = useThemeMode()
@@ -77,14 +50,8 @@ export function App() {
   const [view, setView] = useState<ViewMode>('easiest_to_learn')
   const [search, setSearch] = useState('')
   const [lane, setLane] = useState('ALL')
-  const [tierFilter, setTierFilter] = useState('')
 
   const { data, loading, error } = useAnalysisData(elo)
-
-  const handleViewChange = (v: ViewMode) => {
-    setView(v)
-    setTierFilter('')
-  }
 
   const sourceRows = useMemo((): ChampionStat[] => {
     if (!data) return []
@@ -97,13 +64,8 @@ export function App() {
     }
   }, [data, view])
 
-  const sourceG50 = useMemo((): GameTo50Entry[] => {
-    if (!data || view !== 'games_to_50') return []
-    return data.gameTo50
-  }, [data, view])
-
   const filteredChampions = useMemo((): ChampionStat[] => {
-    if (view === 'games_to_50' || view === 'mastery_curve') return []
+    if (view === 'mastery_curve') return []
     let rows = sourceRows
 
     if (search.trim()) {
@@ -115,34 +77,12 @@ export function App() {
       rows = rows.filter(r => getLaneDisplay(r.most_common_lane) === lane)
     }
 
-    const tierField = getTierField(view)
-    if (tierField && tierFilter) {
-      rows = rows.filter(r => (r[tierField] as string | null) === tierFilter)
-    }
-
     return rows
-  }, [sourceRows, search, lane, tierFilter, view])
+  }, [sourceRows, search, lane, view])
 
-  const filteredG50 = useMemo((): GameTo50Entry[] => {
-    if (view !== 'games_to_50') return []
-    let rows = sourceG50
-
-    if (search.trim()) {
-      const q = search.trim().toLowerCase()
-      rows = rows.filter(r => r.champion_name.toLowerCase().includes(q))
-    }
-
-    if (lane !== 'ALL') {
-      rows = rows.filter(r => getLaneDisplay(r.lane) === lane)
-    }
-
-    return rows
-  }, [sourceG50, search, lane, view])
-
-  const isG50 = view === 'games_to_50'
   const isMasteryCurve = view === 'mastery_curve'
-  const rowCount = isG50 ? filteredG50.length : isMasteryCurve ? 0 : filteredChampions.length
-  const totalCount = isG50 ? sourceG50.length : isMasteryCurve ? 0 : sourceRows.length
+  const rowCount = isMasteryCurve ? 0 : filteredChampions.length
+  const totalCount = isMasteryCurve ? 0 : sourceRows.length
 
   return (
     <ThemeProvider theme={theme}>
@@ -152,14 +92,11 @@ export function App() {
 
         <TableControls
           view={view}
-          onViewChange={handleViewChange}
+          onViewChange={setView}
           search={search}
           onSearchChange={setSearch}
           lane={lane}
           onLaneChange={setLane}
-          tierFilter={tierFilter}
-          onTierFilterChange={setTierFilter}
-          tierOptions={getTierOptions(view)}
           rowCount={rowCount}
           totalCount={totalCount}
         />
@@ -183,14 +120,12 @@ export function App() {
           )}
 
           {!loading && !error && data && (
-            isG50
-              ? <G50Table data={filteredG50} />
-              : isMasteryCurve
-                ? <MasteryCurveView masteryChampionCurves={data.masteryChampionCurves} />
-                : <ChampionTable
-                    data={filteredChampions}
-                    view={view as Exclude<ViewMode, 'games_to_50' | 'mastery_curve'>}
-                  />
+            isMasteryCurve
+              ? <MasteryCurveView masteryChampionCurves={data.masteryChampionCurves} />
+              : <ChampionTable
+                  data={filteredChampions}
+                  view={view as Exclude<ViewMode, 'mastery_curve'>}
+                />
           )}
         </Box>
       </Box>

@@ -69,6 +69,5 @@ export type EloFilter = 'emerald_plus' | 'diamond_plus' | 'diamond2_plus'
 export type ViewMode =
   | 'easiest_to_learn'
   | 'best_to_master'
-  | 'all_stats'
-  | 'games_to_50'
   | 'mastery_curve'
+  | 'all_stats'

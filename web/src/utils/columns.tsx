@@ -1,6 +1,6 @@
 import { type ColumnDef } from '@tanstack/react-table'
 import MuiTooltip from '@mui/material/Tooltip'
-import type { ChampionStat, GameTo50Entry, ViewMode } from '../types/analysis'
+import type { ChampionStat, ViewMode } from '../types/analysis'
 import { fmtPct, fmtRatio, fmtDelta, fmtScore, fmtLane, fmtGames, fmtThreshold } from './format'
 
 // ── Shared champion columns ───────────────────────────────────────────────────
@@ -117,57 +117,6 @@ export function getAllStatsCols(): ColumnDef<ChampionStat>[] {
   ]
 }
 
-// ── Games to 50% columns ──────────────────────────────────────────────────────
-
-export function getGamesTo50Cols(): ColumnDef<GameTo50Entry>[] {
-  return [
-    {
-      id: 'champion',
-      header: 'Champion',
-      accessorKey: 'champion_name',
-      enableSorting: true,
-    },
-    {
-      id: 'lane',
-      header: 'Lane',
-      accessorKey: 'lane',
-      cell: info => fmtLane(info.getValue<string | null>()),
-      enableSorting: true,
-    },
-    {
-      id: 'status',
-      header: 'Status',
-      accessorKey: 'status',
-      enableSorting: true,
-    },
-    {
-      id: 'estimated_games',
-      header: 'Est. Games',
-      accessorKey: 'estimated_games',
-      cell: info => {
-        const v = info.getValue<number | null>()
-        return v === null || v === undefined ? 'N/A' : fmtGames(v)
-      },
-      sortingFn: nullLastSortingFn,
-      enableSorting: true,
-    },
-    {
-      id: 'mastery_threshold',
-      header: 'Mastery Threshold',
-      accessorKey: 'mastery_threshold',
-      cell: info => fmtThreshold(info.getValue<number | null>()),
-      enableSorting: true,
-    },
-    {
-      id: 'starting_winrate',
-      header: 'Starting WR',
-      accessorKey: 'starting_winrate',
-      cell: info => fmtPct(info.getValue<number | null>()),
-      enableSorting: true,
-    },
-  ]
-}
-
 // ── View metadata ─────────────────────────────────────────────────────────────
 
 export interface ViewConfig {
@@ -187,18 +136,13 @@ export const VIEW_CONFIGS: Record<ViewMode, ViewConfig> = {
     label: 'Best to Master',
     defaultSort: { id: 'mastery_score', desc: true },
   },
-  all_stats: {
-    label: 'All Stats',
-    defaultSort: { id: 'champion', desc: false },
-  },
-  games_to_50: {
-    label: 'Games to 50% WR',
-    defaultSort: { id: 'estimated_games', desc: false },
-    isG50: true,
-  },
   mastery_curve: {
     label: 'Mastery Curve',
     defaultSort: { id: 'champion', desc: false },
     isMasteryCurve: true,
+  },
+  all_stats: {
+    label: 'All Stats',
+    defaultSort: { id: 'champion', desc: false },
   },
 }

@@ -18,14 +18,13 @@ import Paper from '@mui/material/Paper'
 import Chip from '@mui/material/Chip'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
-import type { ChampionStat, GameTo50Entry, ViewMode } from '../types/analysis'
+import type { ChampionStat, ViewMode } from '../types/analysis'
 import { ChampionIcon } from './ChampionIcon'
 import { fmtLane } from '../utils/format'
 import {
   getEasiestToLearnCols,
   getBestToMasterCols,
   getAllStatsCols,
-  getGamesTo50Cols,
   VIEW_CONFIGS,
 } from '../utils/columns'
 
@@ -261,11 +260,7 @@ function SortableTable<T extends object>({ data, columns, view }: TableProps<T>)
 
 interface ChampionTableProps {
   data: ChampionStat[]
-  view: Exclude<ViewMode, 'games_to_50' | 'mastery_curve'>
-}
-
-interface G50TableProps {
-  data: GameTo50Entry[]
+  view: Exclude<ViewMode, 'mastery_curve'>
 }
 
 export function ChampionTable({ data, view }: ChampionTableProps) {
@@ -275,14 +270,4 @@ export function ChampionTable({ data, view }: ChampionTableProps) {
     : getAllStatsCols()
 
   return <SortableTable data={data} columns={cols as ColumnDef<ChampionStat>[]} view={view} />
-}
-
-export function G50Table({ data }: G50TableProps) {
-  return (
-    <SortableTable
-      data={data}
-      columns={getGamesTo50Cols() as ColumnDef<GameTo50Entry>[]}
-      view="games_to_50"
-    />
-  )
 }

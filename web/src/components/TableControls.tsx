@@ -12,9 +12,8 @@ import type { ViewMode } from '../types/analysis'
 const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
   { value: 'easiest_to_learn', label: 'Easiest to Learn' },
   { value: 'best_to_master',   label: 'Best to Master' },
-  { value: 'all_stats',        label: 'All Stats' },
-  { value: 'games_to_50',      label: 'Games to 50% WR' },
   { value: 'mastery_curve',    label: 'Mastery Curve' },
+  { value: 'all_stats',        label: 'All Stats' },
 ]
 
 const LANE_OPTIONS = ['ALL', 'Top', 'Jungle', 'Mid', 'Bot', 'Support']
@@ -26,9 +25,6 @@ interface Props {
   onSearchChange: (s: string) => void
   lane: string
   onLaneChange: (l: string) => void
-  tierFilter: string
-  onTierFilterChange: (t: string) => void
-  tierOptions: string[]
   rowCount: number
   totalCount: number
 }
@@ -40,9 +36,6 @@ export function TableControls({
   onSearchChange,
   lane,
   onLaneChange,
-  tierFilter,
-  onTierFilterChange,
-  tierOptions,
   rowCount,
   totalCount,
 }: Props) {
@@ -94,25 +87,6 @@ export function TableControls({
           ))}
         </Select>
       </FormControl>
-
-      {/* Tier filter (contextual) */}
-      {tierOptions.length > 0 && (
-        <FormControl size="small" sx={{ minWidth: 190 }}>
-          <InputLabel>Tier</InputLabel>
-          <Select
-            value={tierFilter}
-            label="Tier"
-            onChange={e => onTierFilterChange(e.target.value)}
-          >
-            <MenuItem value="">All Tiers</MenuItem>
-            {tierOptions.map(t => (
-              <MenuItem key={t} value={t}>
-                {t}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-      )}
 
       <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto' }}>
         Showing {rowCount.toLocaleString()} of {totalCount.toLocaleString()}

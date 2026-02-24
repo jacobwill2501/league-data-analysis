@@ -11,11 +11,12 @@ Replicate and extend the Champion Mastery statistical analysis originally conduc
 
 ## Architecture
 
-Three layers, each runnable independently:
+Four layers, each runnable independently:
 
 1. **Data Collection** — Collect from Riot API, store in SQLite
 2. **Analysis** — Compute mastery statistics from SQLite
 3. **Visualization/Export** — Charts + CSV files matching past-data format
+4. **Web App** — React frontend deployed to GitHub Pages
 
 ---
 
@@ -33,9 +34,20 @@ src/
   analyze.py             # Compute all statistics
   visualize.py           # Generate charts (matplotlib/seaborn)
   export_csv.py          # Export CSVs matching past-data format
+  run_all.py             # Run full pipeline (analyze + export + visualize)
 data/                    # SQLite DB (gitignored)
-output/charts/           # Generated charts
-output/csv/              # Generated CSVs
+output/
+  analysis/              # JSON results consumed by the web app
+  charts/                # Generated chart PNGs
+  csv/                   # Generated CSVs
+web/                     # React + TypeScript + Vite frontend
+  src/
+    components/          # Header, ChampionTable, MasteryCurveView, HelpModal, etc.
+    hooks/               # useAnalysisData, useTheme
+    types/               # TypeScript types for analysis data
+    utils/               # Column definitions
+  public/data/           # Symlinked/copied JSON from output/analysis/
+past-data/               # Original study's CSV data for reference
 requirements.txt         # Python dependencies
 .gitignore               # data/, output/, .env, __pycache__
 ```
@@ -142,6 +154,7 @@ CREATE TABLE match_ids (
     collected_from_puuid TEXT,      -- which player we found this match through
     collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+CREATE INDEX IF NOT EXISTS idx_match_ids_region ON match_ids(region);
 ```
 
 ### Table: `match_participants`
@@ -322,7 +335,6 @@ For each elo filter, compute:
 - Overall win rate for Low mastery bucket
 - Overall win rate for Medium mastery bucket
 - Overall win rate for High mastery bucket
-- Win rate curve: compute win rate at intervals (0-1k, 1k-2k, 2k-5k, 5k-10k, 10k-20k, 20k-50k, 50k-100k, 100k-200k, 200k-500k, 500k-1M, 1M+)
 
 #### 3. Win Rate by Mastery Bucket per Champion
 
@@ -338,13 +350,17 @@ For each champion:
 
 #### 4. "Easiest to Learn" Rankings
 
-Sort champions by Low Mastery Ratio descending (highest ratio = easiest to learn with low mastery).
+Sort champions by Learning Effectiveness Score descending. Score = `(Low WR% - 50) + (Low Ratio - 1) × 50`
 
 #### 5. "Best to Master" Rankings
 
-Sort champions by High Mastery Ratio descending (highest ratio = most reward for high mastery).
+Sort champions by Mastery Effectiveness Score descending. Score = `(High WR% - 50) + (High Ratio - 1) × 50`
 
-#### 6. Impact by Lane
+#### 6. Games to 50% Win Rate
+
+For each champion, estimate the number of games a player needs to reach 50% win rate, using win rate values at each mastery curve interval. The result is stored in the `games_to_50_winrate` field of the champion's JSON record. Champions where low-mastery WR already exceeds 50% report 0 estimated games.
+
+#### 7. Impact by Lane
 
 For each lane (Top, Jungle, Middle, Bottom/ADC, Support):
 - Average Low Mastery win rate across all champions in that lane
@@ -353,7 +369,7 @@ For each lane (Top, Jungle, Middle, Bottom/ADC, Support):
 - Average Low Mastery Ratio
 - Average High Mastery Ratio
 
-#### 7. Summary Stats (for verification)
+#### 8. Summary Stats (for verification)
 
 - Total matches analyzed
 - Total unique players
@@ -361,6 +377,38 @@ For each lane (Top, Jungle, Middle, Bottom/ADC, Support):
 - Overall win rate (should be ~50%)
 - Region balance (count per region)
 - Mastery coverage % (how many match_participants have corresponding mastery data)
+
+### Scoring Formulas and Tier Systems
+
+#### Learning Effectiveness Score
+
+`Learning Score = (Low WR% - 50) + (Low Ratio - 1) × 50`
+
+| Tier | Score Range |
+|------|-------------|
+| Safe Blind Pick | > 0 |
+| Low Risk | -5 to 0 |
+| Moderate | -15 to -5 |
+| High Risk | -25 to -15 |
+| Avoid | < -25 |
+
+#### Mastery Effectiveness Score
+
+`Mastery Score = (High WR% - 50) + (High Ratio - 1) × 50`
+
+| Tier | Score Range |
+|------|-------------|
+| Exceptional Payoff | > 8 |
+| High Payoff | 5 to 8 |
+| Moderate Payoff | 2 to 5 |
+| Low Payoff | 0 to 2 |
+| Not Worth Mastering | < 0 |
+
+#### Investment Score
+
+`Investment Score = Learning Score × 0.4 + Mastery Score × 0.6`
+
+Weighted 60% toward mastery payoff since most players care more about the ceiling.
 
 ### Output
 
@@ -372,13 +420,35 @@ Write results as JSON to `output/analysis/{filter_name}_results.json`. Structure
   "summary": { ... },
   "mastery_distribution": { ... },
   "overall_winrate_by_bucket": { ... },
-  "winrate_curve": [ ... ],
-  "champion_stats": { "Aatrox": { ... }, ... },
+  "champion_stats": {
+    "Aatrox": {
+      "low_wr": 48.2,
+      "medium_wr": 50.1,
+      "high_wr": 51.8,
+      "low_ratio": 0.96,
+      "high_ratio": 1.03,
+      "most_common_lane": "TOP",
+      "learning_score": -4.0,
+      "learning_tier": "Low Risk",
+      "mastery_score": 3.0,
+      "mastery_tier": "Moderate Payoff",
+      "investment_score": 0.2,
+      "games_to_50_winrate": 150,
+      "mastery_curves": [
+        { "interval": "0-1k", "win_rate": 46.1, "games": 1200 },
+        ...
+      ]
+    },
+    ...
+  },
   "lane_impact": { ... },
   "easiest_to_learn": [ ... ],
-  "best_to_master": [ ... ]
+  "best_to_master": [ ... ],
+  "games_to_50": [ ... ]
 }
 ```
+
+Note: `mastery_curves` is a **per-champion** array of win-rate data points across mastery intervals (0-1k, 1k-2k, 2k-5k, 5k-10k, 10k-20k, 20k-50k, 50k-100k, 100k-200k, 200k-500k, 500k-1M, 1M+). It is not a top-level aggregate field.
 
 ---
 
@@ -560,6 +630,7 @@ matplotlib>=3.8.0
 seaborn>=0.13.0
 pandas>=2.1.0
 tqdm>=4.66.0
+python-dotenv>=1.0.0
 ```
 
 ---
@@ -579,6 +650,8 @@ __pycache__/
 
 ## Execution Order
 
+For a full pipeline run, use `run_all.py` (recommended):
+
 ```bash
 # 1. Collect players (run once)
 python src/collect_players.py
@@ -589,13 +662,12 @@ python src/collect_matches.py --target 1000000 --patches current
 # 3. Collect mastery data (resumable)
 python src/collect_mastery.py
 
-# 4. Run analysis
+# 4. Run analysis + export + visualize in one command (recommended)
+python src/run_all.py --filter all
+
+# Or run each step individually:
 python src/analyze.py --filter all
-
-# 5. Generate visualizations
 python src/visualize.py --filter all
-
-# 6. Export CSVs
 python src/export_csv.py --filter all
 ```
 
@@ -604,8 +676,66 @@ For development/testing with a dev key:
 python src/collect_players.py --dev-key --region NA --verbose
 python src/collect_matches.py --dev-key --region NA --target 1000 --verbose
 python src/collect_mastery.py --dev-key --region NA --verbose
-python src/analyze.py --filter emerald_plus
+python src/run_all.py --filter emerald_plus
 ```
+
+---
+
+## Web App (`web/`)
+
+A React + TypeScript frontend deployed to GitHub Pages that visualizes the analysis results.
+
+### Tech Stack
+
+- **React 18** — UI framework
+- **TypeScript** — type safety
+- **Vite** — build tool and dev server
+- **MUI (Material UI)** — component library
+- **Recharts** — interactive charts (mastery curves)
+- **TanStack Table** — sortable/filterable data tables
+
+### Views
+
+The app has five views accessible via tabs:
+
+| Tab | Description |
+|-----|-------------|
+| Easiest to Learn | Champions ranked by Learning Score — best for blind picks |
+| Best to Master | Champions ranked by Mastery Score — best long-term investments |
+| All Stats | Full table: all scores, all win rates, Investment Score |
+| Games to 50% | Estimated games to cross 50% WR per champion |
+| Mastery Curve | Per-champion interactive line chart of WR vs mastery intervals |
+
+### Data Loading
+
+- Reads `output/analysis/{filter}_results.json` files served from `web/public/data/`
+- ELO filter selection (Emerald+, Diamond+, Diamond 2+) switches the loaded JSON file
+- Data is fetched client-side on filter change
+
+### Filtering
+
+- Champion name search (case-insensitive substring match)
+- Lane filter (All, Top, Jungle, Mid, Bot, Support)
+- Tier filter (varies by view — Learning tiers for Easiest to Learn, Mastery tiers for Best to Master)
+
+### Deployment
+
+Deployed via GitHub Pages. The CI/CD pipeline copies JSON results into `web/public/data/` before building.
+
+---
+
+## CI/CD (`.github/workflows/`)
+
+### `ci.yml`
+
+Triggers on push to `main` when `web/` files change. Runs `npm run build` in the `web/` directory to verify the TypeScript build passes.
+
+### `deploy.yml`
+
+Triggers on push to `main`. Steps:
+1. Copy `output/analysis/*.json` → `web/public/data/`
+2. Run `npm run build` in `web/`
+3. Deploy the `web/dist/` output to GitHub Pages
 
 ---
 
@@ -626,3 +756,7 @@ python src/analyze.py --filter emerald_plus
 7. **Resumability is non-negotiable.** These collection scripts may run for hours/days. Every script must be able to pick up where it left off after interruption.
 
 8. **CSV format must match exactly.** The output CSVs must have the same column structure, formatting, and sorting as the originals in `past-data/`. This includes the two leading empty columns, percentage formatting, and annotation cells.
+
+9. **`mastery_curves` is per-champion.** Each champion's JSON record in `champion_stats` contains a `mastery_curves` array of win-rate data points across mastery intervals. This is not a top-level aggregate.
+
+10. **Dataset scale.** The full dataset covers ~9M matches from Emerald+ ranked solo queue across NA, EUW, and KR.

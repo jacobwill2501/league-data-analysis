@@ -8,6 +8,7 @@ import functools
 from typing import Optional, List, Dict, Any
 from contextlib import contextmanager
 import json
+from tqdm import tqdm
 
 import config
 
@@ -112,6 +113,7 @@ class Database:
                     collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_match_ids_region ON match_ids(region)")
 
             # Table: match_participants
             cursor.execute("""
@@ -553,22 +555,34 @@ class Database:
         Returns:
             Dict mapping puuid -> list of champion_ids that need mastery data
         """
+        CHUNK = 10_000
+        QUERY = """
+            SELECT DISTINCT mp.puuid, mp.champion_id
+            FROM match_participants mp
+            JOIN match_ids mi ON mp.match_id = mi.match_id
+            LEFT JOIN champion_mastery cm
+                ON mp.puuid = cm.puuid AND mp.champion_id = cm.champion_id
+            WHERE mi.region = ? AND cm.puuid IS NULL
+        """
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
-                SELECT DISTINCT mp.puuid, mp.champion_id
-                FROM match_participants mp
-                JOIN match_ids mi ON mp.match_id = mi.match_id
-                LEFT JOIN champion_mastery cm
-                    ON mp.puuid = cm.puuid AND mp.champion_id = cm.champion_id
-                WHERE mi.region = ? AND cm.puuid IS NULL
-            """, (region,))
+            cursor.execute(
+                f"SELECT COUNT(*) FROM ({QUERY})",
+                (region,)
+            )
+            total = cursor.fetchone()[0]
 
             result: Dict[str, List[int]] = {}
-            for row in cursor.fetchall():
-                puuid, champ_id = row[0], row[1]
-                result.setdefault(puuid, []).append(champ_id)
-            return result
+            cursor.execute(QUERY, (region,))
+            with tqdm(total=total, desc=f"Loading pairs ({region})", unit="pair", leave=False) as pbar:
+                while True:
+                    rows = cursor.fetchmany(CHUNK)
+                    if not rows:
+                        break
+                    for row in rows:
+                        result.setdefault(row[0], []).append(row[1])
+                    pbar.update(len(rows))
+        return result
 
     def get_pending_mastery_pairs(self, region: Optional[str] = None) -> List[tuple]:
         """
