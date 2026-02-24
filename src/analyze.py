@@ -471,6 +471,13 @@ class MasteryAnalyzer:
                 lo2, hi2, mid2, wr2 = points_wr[i + 1]
 
                 if wr1 < 0.50 <= wr2:
+                    # Verify the average of all post-crossing intervals is also >= 50%
+                    post_crossing_wrs = [wr for _, _, _, wr in points_wr[i + 1:]]
+                    avg_post = sum(post_crossing_wrs) / len(post_crossing_wrs)
+
+                    if avg_post < 0.50:
+                        continue  # Not a sustained crossing — keep looking
+
                     # Linear interpolation between midpoints
                     if wr2 != wr1:
                         frac = (0.50 - wr1) / (wr2 - wr1)
