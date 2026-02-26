@@ -117,6 +117,42 @@ export function getAllStatsCols(): ColumnDef<ChampionStat>[] {
   ]
 }
 
+export function getPabuEasiestToLearnCols(): ColumnDef<ChampionStat>[] {
+  const pabuEstGamesCol: ColumnDef<ChampionStat> = {
+    id: 'estimated_games',
+    header: () => (
+      <MuiTooltip title="Est. games until win rate exceeds the elo bracket average (elo-normalized threshold)">
+        <span style={{ cursor: 'help', borderBottom: '1px dotted currentColor' }}>Est. Games</span>
+      </MuiTooltip>
+    ),
+    accessorKey: 'estimated_games',
+    cell: info => {
+      const v = info.getValue<number | null>()
+      return v === null || v === undefined ? 'N/A' : fmtGames(v)
+    },
+    sortingFn: nullLastSortingFn,
+    enableSorting: true,
+  }
+  return [
+    championCol,
+    laneCol,
+    { id: 'status', header: 'Status', accessorKey: 'games_to_50_status', cell: info => info.getValue<string | null>() ?? '—', enableSorting: true },
+    pabuEstGamesCol,
+    { id: 'mastery_threshold', header: 'Mastery Threshold', accessorKey: 'mastery_threshold', cell: info => fmtThreshold(info.getValue<number | null>()), enableSorting: true },
+    {
+      id: 'starting_winrate',
+      header: () => (
+        <MuiTooltip title="Win rate in the lowest mastery interval (0–1,000 points) — approximates performance in a player's first 1–2 games on this champion">
+          <span style={{ cursor: 'help', borderBottom: '1px dotted currentColor' }}>Starting WR</span>
+        </MuiTooltip>
+      ),
+      accessorKey: 'starting_winrate',
+      cell: info => fmtPct(info.getValue<number | null>()),
+      enableSorting: true,
+    },
+  ]
+}
+
 // ── View metadata ─────────────────────────────────────────────────────────────
 
 export interface ViewConfig {
@@ -125,6 +161,7 @@ export interface ViewConfig {
   isG50?: boolean
   isBias?: boolean
   isMasteryCurve?: boolean
+  isPabu?: boolean
 }
 
 export const VIEW_CONFIGS: Record<ViewMode, ViewConfig> = {
@@ -144,5 +181,21 @@ export const VIEW_CONFIGS: Record<ViewMode, ViewConfig> = {
   all_stats: {
     label: 'All Stats',
     defaultSort: { id: 'champion', desc: false },
+  },
+  pabu_easiest_to_learn: {
+    label: 'Pabu: Easiest to Learn β',
+    defaultSort: { id: 'estimated_games', desc: false },
+    isPabu: true,
+  },
+  pabu_best_to_master: {
+    label: 'Pabu: Best to Master β',
+    defaultSort: { id: 'mastery_score', desc: true },
+    isPabu: true,
+  },
+  pabu_mastery_curve: {
+    label: 'Pabu: Mastery Curve β',
+    defaultSort: { id: 'champion', desc: false },
+    isMasteryCurve: true,
+    isPabu: true,
   },
 }

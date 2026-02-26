@@ -56,16 +56,19 @@ export function App() {
   const sourceRows = useMemo((): ChampionStat[] => {
     if (!data) return []
     switch (view) {
-      case 'easiest_to_learn': return data.easiestToLearn
-      case 'best_to_master':   return data.bestToMaster
-      case 'all_stats':        return data.champions
-      case 'mastery_curve':    return []
-      default:                 return data.champions
+      case 'easiest_to_learn':       return data.easiestToLearn
+      case 'best_to_master':         return data.bestToMaster
+      case 'all_stats':              return data.champions
+      case 'mastery_curve':          return []
+      case 'pabu_easiest_to_learn':  return data.pabuEasiestToLearn
+      case 'pabu_best_to_master':    return data.pabuBestToMaster
+      case 'pabu_mastery_curve':     return []
+      default:                       return data.champions
     }
   }, [data, view])
 
   const filteredChampions = useMemo((): ChampionStat[] => {
-    if (view === 'mastery_curve') return []
+    if (view === 'mastery_curve' || view === 'pabu_mastery_curve') return []
     let rows = sourceRows
 
     if (search.trim()) {
@@ -80,7 +83,7 @@ export function App() {
     return rows
   }, [sourceRows, search, lane, view])
 
-  const isMasteryCurve = view === 'mastery_curve'
+  const isMasteryCurve = view === 'mastery_curve' || view === 'pabu_mastery_curve'
   const rowCount = isMasteryCurve ? 0 : filteredChampions.length
   const totalCount = isMasteryCurve ? 0 : sourceRows.length
 
@@ -128,10 +131,13 @@ export function App() {
 
           {!loading && !error && data && (
             isMasteryCurve
-              ? <MasteryCurveView masteryChampionCurves={data.masteryChampionCurves} />
+              ? <MasteryCurveView
+                  masteryChampionCurves={data.masteryChampionCurves}
+                  pabuThreshold={view === 'pabu_mastery_curve' ? data.overallWinRate : undefined}
+                />
               : <ChampionTable
                   data={filteredChampions}
-                  view={view as Exclude<ViewMode, 'mastery_curve'>}
+                  view={view as Exclude<ViewMode, 'mastery_curve' | 'pabu_mastery_curve'>}
                 />
           )}
         </Box>

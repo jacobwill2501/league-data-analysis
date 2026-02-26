@@ -19,7 +19,8 @@ from tqdm import tqdm
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import (ELO_FILTERS, MASTERY_BUCKETS, MINIMUM_SAMPLE_SIZE,
-                    WIN_RATE_INTERVALS, LANES, LANE_DISPLAY_NAMES)
+                    WIN_RATE_INTERVALS, LANES, LANE_DISPLAY_NAMES,
+                    get_pabu_mastery_bucket)
 from db import Database
 from utils import (setup_logging, format_number, format_percentage,
                    PatchManager, create_output_dirs)
@@ -390,14 +391,95 @@ class MasteryAnalyzer:
 
         return results
 
-    def compute_games_to_50_winrate(self) -> List[Dict]:
-        """Estimate how many games it takes each champion to reach 50% win rate.
+    def compute_pabu_champion_stats(self) -> Dict:
+        """Compute per-champion statistics using Pabu mastery buckets (30k medium boundary)."""
+        logger.info("Computing Pabu per-champion statistics (30k medium boundary)...")
+
+        champ_data = defaultdict(lambda: {
+            'low': {'wins': 0, 'games': 0},
+            'medium': {'wins': 0, 'games': 0},
+            'high': {'wins': 0, 'games': 0},
+            'lane_counts': defaultdict(int),
+        })
+
+        for p in self.participants:
+            key = (p['puuid'], p['champion_id'])
+            if key not in self.mastery_data:
+                continue
+
+            champ = p['champion_name']
+            points = self.mastery_data[key]['mastery_points']
+            bucket = get_pabu_mastery_bucket(points)
+
+            champ_data[champ][bucket]['games'] += 1
+            if p['win']:
+                champ_data[champ][bucket]['wins'] += 1
+
+            lane = p.get('individual_position')
+            if lane:
+                champ_data[champ]['lane_counts'][lane] += 1
+
+        results = {}
+
+        for champ, data in champ_data.items():
+            low_wr = None
+            med_wr = None
+            high_wr = None
+
+            if data['low']['games'] >= MINIMUM_SAMPLE_SIZE:
+                low_wr = data['low']['wins'] / data['low']['games']
+            if data['medium']['games'] >= MINIMUM_SAMPLE_SIZE:
+                med_wr = data['medium']['wins'] / data['medium']['games']
+            if data['high']['games'] >= MINIMUM_SAMPLE_SIZE:
+                high_wr = data['high']['wins'] / data['high']['games']
+
+            low_ratio = low_wr / med_wr if (low_wr is not None and med_wr is not None) else None
+            high_ratio = high_wr / med_wr if (high_wr is not None and med_wr is not None) else None
+
+            low_delta = (low_wr - med_wr) * 100 if (low_wr is not None and med_wr is not None) else None
+            delta = (high_wr - med_wr) * 100 if (high_wr is not None and med_wr is not None) else None
+            mastery_score = ((high_wr * 100 - 50) + (high_ratio - 1) * 50) if (high_wr is not None and high_ratio is not None) else None
+            learning_score = ((low_wr * 100 - 50) + (low_ratio - 1) * 50) if (low_wr is not None and low_ratio is not None) else None
+            investment_score = (learning_score * 0.4 + mastery_score * 0.6) if (learning_score is not None and mastery_score is not None) else None
+
+            learning_tier = _learning_tier(learning_score)
+            mastery_tier = _mastery_tier(mastery_score)
+
+            lane_counts = data['lane_counts']
+            most_common_lane = max(lane_counts, key=lane_counts.get) if lane_counts else None
+
+            results[champ] = {
+                'low_wr': low_wr,
+                'medium_wr': med_wr,
+                'high_wr': high_wr,
+                'low_games': data['low']['games'],
+                'medium_games': data['medium']['games'],
+                'high_games': data['high']['games'],
+                'low_ratio': low_ratio,
+                'high_ratio': high_ratio,
+                'low_delta': low_delta,
+                'delta': delta,
+                'mastery_score': mastery_score,
+                'learning_score': learning_score,
+                'investment_score': investment_score,
+                'learning_tier': learning_tier,
+                'mastery_tier': mastery_tier,
+                'most_common_lane': most_common_lane,
+            }
+
+        return results
+
+    def compute_games_to_50_winrate(self, threshold: float = 0.50) -> List[Dict]:
+        """Estimate how many games it takes each champion to reach the win rate threshold.
 
         Uses WIN_RATE_INTERVALS to compute per-champion win rates at each
-        mastery interval, finds where the curve crosses 50%, and converts
+        mastery interval, finds where the curve crosses `threshold`, and converts
         the mastery-point threshold to an approximate game count (~700 pts/game).
+
+        Args:
+            threshold: Win rate threshold to find crossing for (default 0.50).
         """
-        logger.info("Computing games to 50% win rate...")
+        logger.info(f"Computing games to {threshold:.1%} win rate...")
 
         MASTERY_PER_GAME = 700
 
@@ -447,20 +529,22 @@ class MasteryAnalyzer:
                     'mastery_threshold': None,
                     'estimated_games': None,
                     'starting_winrate': points_wr[0][3] if points_wr else None,
+                    'win_rate_threshold': threshold,
                     'status': 'low data',
                 })
                 continue
 
             starting_wr = points_wr[0][3]
 
-            # Check if always above 50%
-            if all(wr >= 0.50 for _, _, _, wr in points_wr):
+            # Check if always above threshold
+            if all(wr >= threshold for _, _, _, wr in points_wr):
                 results.append({
                     'champion_name': champ,
                     'lane': most_common_lane,
                     'mastery_threshold': 0,
                     'estimated_games': 0,
                     'starting_winrate': starting_wr,
+                    'win_rate_threshold': threshold,
                     'status': 'always above 50%',
                 })
                 continue
@@ -471,26 +555,27 @@ class MasteryAnalyzer:
                 lo1, hi1, mid1, wr1 = points_wr[i]
                 lo2, hi2, mid2, wr2 = points_wr[i + 1]
 
-                if wr1 < 0.50 <= wr2:
-                    # Verify the average of all post-crossing intervals is also >= 50%
+                if wr1 < threshold <= wr2:
+                    # Verify the average of all post-crossing intervals is also >= threshold
                     post_crossing_wrs = [wr for _, _, _, wr in points_wr[i + 1:]]
                     avg_post = sum(post_crossing_wrs) / len(post_crossing_wrs)
 
-                    if avg_post < 0.50:
+                    if avg_post < threshold:
                         continue  # Not a sustained crossing — keep looking
 
                     # Linear interpolation between midpoints
                     if wr2 != wr1:
-                        frac = (0.50 - wr1) / (wr2 - wr1)
-                        threshold = mid1 + frac * (mid2 - mid1)
+                        frac = (threshold - wr1) / (wr2 - wr1)
+                        mastery_pt = mid1 + frac * (mid2 - mid1)
                     else:
-                        threshold = mid1
+                        mastery_pt = mid1
                     results.append({
                         'champion_name': champ,
                         'lane': most_common_lane,
-                        'mastery_threshold': round(threshold),
-                        'estimated_games': round(threshold / MASTERY_PER_GAME),
+                        'mastery_threshold': round(mastery_pt),
+                        'estimated_games': round(mastery_pt / MASTERY_PER_GAME),
                         'starting_winrate': starting_wr,
+                        'win_rate_threshold': threshold,
                         'status': 'crosses 50%',
                     })
                     crossed = True
@@ -503,6 +588,7 @@ class MasteryAnalyzer:
                     'mastery_threshold': None,
                     'estimated_games': None,
                     'starting_winrate': starting_wr,
+                    'win_rate_threshold': threshold,
                     'status': 'never reaches 50%',
                 })
 
@@ -791,6 +877,11 @@ class MasteryAnalyzer:
         bias_champion_stats = self.compute_bias_champion_stats(games_to_50)
         mastery_curves = self.compute_mastery_curves_by_champion()
 
+        # Pabu: 30k medium boundary + elo-normalized threshold
+        elo_avg_wr = summary['overall_win_rate']
+        pabu_champion_stats = self.compute_pabu_champion_stats()
+        pabu_games_to_threshold = self.compute_games_to_50_winrate(threshold=elo_avg_wr)
+
         # Bias rankings
         bias_instantly_viable = sorted(
             [(c, s) for c, s in bias_champion_stats.items()
@@ -852,6 +943,33 @@ class MasteryAnalyzer:
             reverse=True
         )
 
+        # Pabu rankings — easiest_to_learn sorted by games-to-threshold
+        pabu_g50_lookup = {entry['champion_name']: entry for entry in pabu_games_to_threshold}
+
+        def pabu_easiest_sort_key(item):
+            champ, _ = item
+            g50 = pabu_g50_lookup.get(champ)
+            if g50 is None:
+                return (3, 0, champ)
+            status = g50.get('status', '')
+            if status == 'always above 50%':
+                return (0, 0, champ)
+            elif status == 'crosses 50%':
+                est = g50.get('estimated_games') or 0
+                return (1, est, champ)
+            elif status == 'never reaches 50%':
+                return (2, 0, champ)
+            else:
+                return (3, 0, champ)
+
+        pabu_easiest_sorted = sorted(pabu_champion_stats.items(), key=pabu_easiest_sort_key)
+
+        pabu_best_to_master_sorted = sorted(
+            [(c, s) for c, s in pabu_champion_stats.items() if s['mastery_score'] is not None],
+            key=lambda x: x[1]['mastery_score'],
+            reverse=True,
+        )
+
         # Strip raw_values from distribution before saving (too large for JSON)
         dist_for_save = {k: v for k, v in distribution.items() if k != 'raw_values'}
 
@@ -891,6 +1009,21 @@ class MasteryAnalyzer:
                 {'champion': c, **s} for c, s in bias_best_investment
             ],
             'mastery_curves': mastery_curves,
+            'pabu_champion_stats': pabu_champion_stats,
+            'pabu_games_to_threshold': pabu_games_to_threshold,
+            'pabu_easiest_to_learn': [
+                {
+                    'champion': c,
+                    'games_to_50_status': pabu_g50_lookup.get(c, {}).get('status'),
+                    'estimated_games': pabu_g50_lookup.get(c, {}).get('estimated_games'),
+                    'mastery_threshold': pabu_g50_lookup.get(c, {}).get('mastery_threshold'),
+                    'starting_winrate': pabu_g50_lookup.get(c, {}).get('starting_winrate'),
+                    **s
+                } for c, s in pabu_easiest_sorted
+            ],
+            'pabu_best_to_master': [
+                {'champion': c, **s} for c, s in pabu_best_to_master_sorted
+            ],
         }
 
         return results

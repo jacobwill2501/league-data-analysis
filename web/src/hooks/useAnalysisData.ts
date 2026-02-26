@@ -9,6 +9,9 @@ export interface ParsedData {
   masteryChampionCurves: Record<string, MasteryChampionCurve>
   summary: { total_matches: number; total_unique_players: number } | null
   generatedAt: string | null
+  overallWinRate: number | null
+  pabuEasiestToLearn: ChampionStat[]
+  pabuBestToMaster: ChampionStat[]
 }
 
 const BASE_URL = import.meta.env.BASE_URL
@@ -56,6 +59,9 @@ function parseData(raw: AnalysisData): ParsedData {
       ? { total_matches: raw.summary.total_matches, total_unique_players: raw.summary.total_unique_players }
       : null,
     generatedAt: raw.generated_at ?? null,
+    overallWinRate: raw.summary?.overall_win_rate ?? null,
+    pabuEasiestToLearn: raw.pabu_easiest_to_learn ?? [],
+    pabuBestToMaster: raw.pabu_best_to_master ?? [],
   }
 }
 

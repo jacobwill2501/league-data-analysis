@@ -194,6 +194,26 @@ output/
 past-data/               # Original study's CSV data for reference
 ```
 
+## Web UI
+
+A React frontend for browsing the analysis results lives in `web/`.
+
+```bash
+cd web
+npm install
+
+# Copy the latest JSON results into the web's public folder (run after re-analyzing)
+npm run copy-data
+
+# Start the dev server
+npm run dev
+
+# Build for production
+npm run build
+```
+
+> **Note:** Run `npm run copy-data` any time you re-run analysis (`src/analyze.py`) so the web UI picks up the new data.
+
 ## Original Study
 
 - **Reddit post**: `reddit-post.txt` in this repo

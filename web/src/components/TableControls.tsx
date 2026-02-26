@@ -1,4 +1,5 @@
 import Box from '@mui/material/Box'
+import Divider from '@mui/material/Divider'
 import FormControl from '@mui/material/FormControl'
 import InputLabel from '@mui/material/InputLabel'
 import Select from '@mui/material/Select'
@@ -14,6 +15,12 @@ const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
   { value: 'best_to_master',   label: 'Best to Master' },
   { value: 'mastery_curve',    label: 'Mastery Curve' },
   { value: 'all_stats',        label: 'All Stats' },
+]
+
+const PABU_VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
+  { value: 'pabu_easiest_to_learn', label: 'Pabu: Easiest to Learn β' },
+  { value: 'pabu_best_to_master',   label: 'Pabu: Best to Master β' },
+  { value: 'pabu_mastery_curve',    label: 'Pabu: Mastery Curve β' },
 ]
 
 const LANE_OPTIONS = ['ALL', 'Top', 'Jungle', 'Mid', 'Bot', 'Support']
@@ -54,18 +61,39 @@ export function TableControls({
       }}
     >
       {/* View selector */}
-      <ToggleButtonGroup
-        value={view}
-        exclusive
-        size="small"
-        onChange={(_, val) => val && onViewChange(val as ViewMode)}
-      >
-        {VIEW_OPTIONS.map(opt => (
-          <ToggleButton key={opt.value} value={opt.value} sx={{ px: 1.5 }}>
-            {opt.label}
-          </ToggleButton>
-        ))}
-      </ToggleButtonGroup>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        <ToggleButtonGroup
+          value={view}
+          exclusive
+          size="small"
+          onChange={(_, val) => val && onViewChange(val as ViewMode)}
+        >
+          {VIEW_OPTIONS.map(opt => (
+            <ToggleButton key={opt.value} value={opt.value} sx={{ px: 1.5 }}>
+              {opt.label}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+
+        <ToggleButtonGroup
+          value={view}
+          exclusive
+          size="small"
+          onChange={(_, val) => val && onViewChange(val as ViewMode)}
+        >
+          {PABU_VIEW_OPTIONS.map(opt => (
+            <ToggleButton
+              key={opt.value}
+              value={opt.value}
+              sx={{ px: 1.5, fontStyle: 'italic', color: 'text.secondary' }}
+            >
+              {opt.label}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+      </Box>
 
       {/* Search */}
       <TextField

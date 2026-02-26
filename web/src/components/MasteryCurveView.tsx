@@ -24,6 +24,7 @@ const getMid = (iv: MasteryInterval): number => {
 
 interface Props {
   masteryChampionCurves: Record<string, MasteryChampionCurve>
+  pabuThreshold?: number | null
 }
 
 function CustomTooltip({ active, payload }: { active?: boolean; payload?: { payload: MasteryInterval & { mid: number } }[] }) {
@@ -42,7 +43,7 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: { payl
   )
 }
 
-export function MasteryCurveView({ masteryChampionCurves }: Props) {
+export function MasteryCurveView({ masteryChampionCurves, pabuThreshold }: Props) {
   const [selectedChamp, setSelectedChamp] = useState<string | null>(null)
   const theme = useTheme()
 
@@ -117,9 +118,17 @@ export function MasteryCurveView({ masteryChampionCurves }: Props) {
               <ReferenceLine
                 y={0.5}
                 stroke={theme.palette.warning.main}
-                strokeDasharray="5 5"
+                strokeDasharray={pabuThreshold != null ? undefined : '5 5'}
                 label={{ value: '50%', position: 'insideTopRight', fontSize: 11, fill: theme.palette.warning.main }}
               />
+              {pabuThreshold != null && (
+                <ReferenceLine
+                  y={pabuThreshold}
+                  stroke={theme.palette.secondary.main}
+                  strokeDasharray="5 5"
+                  label={{ value: `Elo avg (${(pabuThreshold * 100).toFixed(1)}%)`, position: 'insideBottomRight', fontSize: 11, fill: theme.palette.secondary.main }}
+                />
+              )}
               <Line
                 type="monotone"
                 dataKey="win_rate"

@@ -52,6 +52,7 @@ export interface MasteryChampionCurve {
 export interface AnalysisSummary {
   total_matches: number
   total_unique_players: number
+  overall_win_rate: number
 }
 
 export interface AnalysisData {
@@ -69,6 +70,11 @@ export interface AnalysisData {
   best_to_master: ChampionStat[]
   best_investment: ChampionStat[]
   mastery_curves: Record<string, MasteryChampionCurve>
+  // Pabu beta views (optional — absent in older JSONs)
+  pabu_champion_stats?: Record<string, Omit<ChampionStat, 'champion'>>
+  pabu_games_to_threshold?: GameTo50Entry[]
+  pabu_easiest_to_learn?: ChampionStat[]
+  pabu_best_to_master?: ChampionStat[]
 }
 
 export type EloFilter = 'emerald_plus' | 'diamond_plus' | 'diamond2_plus'
@@ -78,3 +84,6 @@ export type ViewMode =
   | 'best_to_master'
   | 'mastery_curve'
   | 'all_stats'
+  | 'pabu_easiest_to_learn'
+  | 'pabu_best_to_master'
+  | 'pabu_mastery_curve'

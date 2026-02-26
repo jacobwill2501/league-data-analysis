@@ -25,6 +25,7 @@ import {
   getEasiestToLearnCols,
   getBestToMasterCols,
   getAllStatsCols,
+  getPabuEasiestToLearnCols,
   VIEW_CONFIGS,
 } from '../utils/columns'
 
@@ -260,13 +261,14 @@ function SortableTable<T extends object>({ data, columns, view }: TableProps<T>)
 
 interface ChampionTableProps {
   data: ChampionStat[]
-  view: Exclude<ViewMode, 'mastery_curve'>
+  view: Exclude<ViewMode, 'mastery_curve' | 'pabu_mastery_curve'>
 }
 
 export function ChampionTable({ data, view }: ChampionTableProps) {
   const cols =
-    view === 'easiest_to_learn' ? getEasiestToLearnCols()
-    : view === 'best_to_master' ? getBestToMasterCols()
+    view === 'easiest_to_learn'      ? getEasiestToLearnCols()
+    : view === 'pabu_easiest_to_learn' ? getPabuEasiestToLearnCols()
+    : view === 'best_to_master' || view === 'pabu_best_to_master' ? getBestToMasterCols()
     : getAllStatsCols()
 
   return <SortableTable data={data} columns={cols as ColumnDef<ChampionStat>[]} view={view} />

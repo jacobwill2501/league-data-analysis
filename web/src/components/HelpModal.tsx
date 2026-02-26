@@ -282,6 +282,77 @@ export function HelpModal({ open, onClose }: Props) {
 
         <Divider sx={{ my: 2 }} />
 
+        <Section title="Pabu Beta Views (β)">
+          <P>
+            The <strong>Pabu β</strong> views are experimental analyses that apply an elo-normalized
+            threshold instead of the fixed 50% win rate baseline.
+          </P>
+          <Typography variant="subtitle2" gutterBottom fontWeight="bold">
+            Why not 50%?
+          </Typography>
+          <P>
+            In a perfectly symmetric dataset the average win rate is exactly 50%, but real sampling
+            (region balance, mastery-coverage bias) shifts it slightly. The Pabu threshold uses the
+            bracket's <em>empirical average win rate</em> — the actual observed mean across all
+            tracked participants. This is an <em>excess win rate</em> frame: a champion "crosses the
+            threshold" when players start contributing positively above what an average player in
+            that bracket already achieves.
+          </P>
+          <Typography variant="subtitle2" gutterBottom fontWeight="bold">
+            Pabu Easiest to Learn β
+          </Typography>
+          <P>
+            Same structure as Easiest to Learn, but "Est. Games" now estimates how many games until
+            the champion's win rate exceeds the elo bracket average rather than 50%. Champions that
+            barely cross 50% but remain below the elo average will appear as "never reaches
+            threshold" here.
+          </P>
+          <Typography variant="subtitle2" gutterBottom fontWeight="bold">
+            Pabu Best to Master β
+          </Typography>
+          <P>
+            Same scoring as Best to Master, but mastery buckets use a <strong>30,000-point</strong>{' '}
+            medium boundary instead of 10,000. This shifts more players into the "low mastery" bucket,
+            giving a broader view of early-investment performance.
+          </P>
+          <Table size="small" sx={{ mb: 1 }}>
+            <TableHead>
+              <TableRow>
+                <TableCell>Bucket</TableCell>
+                <TableCell>Mastery Points</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              <TableRow>
+                <TableCell>Low</TableCell>
+                <TableCell>{'< 30,000'}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Medium</TableCell>
+                <TableCell>30,000 – 100,000</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>High</TableCell>
+                <TableCell>{'100,000+'}</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+          <Typography variant="subtitle2" gutterBottom fontWeight="bold">
+            Pabu Mastery Curve β
+          </Typography>
+          <P>
+            Same interactive chart as Mastery Curve, but shows two reference lines: a solid 50%
+            line and a dashed line at the elo bracket's empirical average win rate. This makes it
+            easy to see whether a champion exceeds the meaningful performance baseline at each
+            mastery level.
+          </P>
+          <P>
+            <em>These views are experimental and may change in future releases.</em>
+          </P>
+        </Section>
+
+        <Divider sx={{ my: 2 }} />
+
         <Section title="Reading the Table">
           <P>
             <strong>Color coding:</strong> Win rate cells are colored green when {'>'} 52%, red when{' '}

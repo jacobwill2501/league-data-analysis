@@ -199,6 +199,34 @@ def get_rate_limits(use_dev_key: bool = False) -> Dict:
     return DEV_RATE_LIMITS if use_dev_key else PRODUCTION_RATE_LIMITS
 
 
+PABU_MASTERY_BUCKETS = {
+    'low': {
+        'min': 0,
+        'max': 30000,
+        'label': 'Low (<30k)'
+    },
+    'medium': {
+        'min': 30000,
+        'max': 100000,
+        'label': 'Medium (30k–100k)'
+    },
+    'high': {
+        'min': 100000,
+        'max': float('inf'),
+        'label': 'High (100k+)'
+    }
+}
+
+
+def get_pabu_mastery_bucket(mastery_points: int) -> str:
+    """Determine Pabu mastery bucket (30k medium boundary) for a given point value"""
+    if mastery_points < 30000:
+        return 'low'
+    if mastery_points < 100000:
+        return 'medium'
+    return 'high'
+
+
 def get_mastery_bucket(mastery_points: int) -> str:
     """
     Determine which mastery bucket a value falls into
