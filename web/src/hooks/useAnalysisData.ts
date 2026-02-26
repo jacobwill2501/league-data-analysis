@@ -7,6 +7,8 @@ export interface ParsedData {
   easiestToLearn: ChampionStat[]
   bestToMaster: ChampionStat[]
   masteryChampionCurves: Record<string, MasteryChampionCurve>
+  summary: { total_matches: number; total_unique_players: number } | null
+  generatedAt: string | null
 }
 
 const BASE_URL = import.meta.env.BASE_URL
@@ -50,6 +52,10 @@ function parseData(raw: AnalysisData): ParsedData {
     easiestToLearn,
     bestToMaster: raw.best_to_master ?? [],
     masteryChampionCurves,
+    summary: raw.summary
+      ? { total_matches: raw.summary.total_matches, total_unique_players: raw.summary.total_unique_players }
+      : null,
+    generatedAt: raw.generated_at ?? null,
   }
 }
 

@@ -49,9 +49,16 @@ export interface MasteryChampionCurve {
   intervals: MasteryInterval[]
 }
 
+export interface AnalysisSummary {
+  total_matches: number
+  total_unique_players: number
+}
+
 export interface AnalysisData {
   filter: string
   filter_description: string
+  generated_at?: string
+  summary?: AnalysisSummary
   champion_stats: Record<string, Omit<ChampionStat, 'champion'>>
   bias_champion_stats: Record<string, Omit<ChampionStat, 'champion'>>
   games_to_50_winrate: GameTo50Entry[]

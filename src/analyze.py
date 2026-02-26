@@ -6,6 +6,7 @@ and outputs JSON files for visualization and export.
 """
 
 import argparse
+import datetime
 import json
 import logging
 import os
@@ -857,6 +858,7 @@ class MasteryAnalyzer:
         results = {
             'filter': self.elo_filter,
             'filter_description': self.filter_config['description'],
+            'generated_at': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
             'summary': summary,
             'mastery_distribution': dist_for_save,
             'overall_winrate_by_bucket': overall_buckets,

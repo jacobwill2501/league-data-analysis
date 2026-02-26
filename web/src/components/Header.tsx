@@ -13,6 +13,12 @@ import type { PaletteMode } from '@mui/material'
 import type { EloFilter } from '../types/analysis'
 import { HelpModal } from './HelpModal'
 
+function fmtCompact(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M'
+  if (n >= 1_000) return Math.round(n / 1_000) + 'K'
+  return String(n)
+}
+
 const ELO_OPTIONS: { value: EloFilter; label: string }[] = [
   { value: 'emerald_plus', label: 'Emerald+' },
   { value: 'diamond_plus', label: 'Diamond+' },
@@ -24,9 +30,11 @@ interface Props {
   onEloChange: (elo: EloFilter) => void
   mode: PaletteMode
   onModeToggle: () => void
+  summary?: { total_matches: number; total_unique_players: number } | null
+  generatedAt?: string | null
 }
 
-export function Header({ elo, onEloChange, mode, onModeToggle }: Props) {
+export function Header({ elo, onEloChange, mode, onModeToggle, summary, generatedAt }: Props) {
   const [helpOpen, setHelpOpen] = useState(false)
 
   return (
@@ -36,6 +44,15 @@ export function Header({ elo, onEloChange, mode, onModeToggle }: Props) {
           <Typography variant="h6" fontWeight="bold" sx={{ flexShrink: 0 }}>
             Champion Mastery Analysis
           </Typography>
+
+          {summary && (
+            <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
+              {fmtCompact(summary.total_matches)} matches
+              {' · '}
+              {fmtCompact(summary.total_unique_players)} players
+              {generatedAt && ` · Updated ${new Date(generatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}`}
+            </Typography>
+          )}
 
           <ToggleButtonGroup
             value={elo}

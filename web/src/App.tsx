@@ -88,7 +88,14 @@ export function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-        <Header elo={elo} onEloChange={setElo} mode={mode} onModeToggle={toggle} />
+        <Header
+          elo={elo}
+          onEloChange={setElo}
+          mode={mode}
+          onModeToggle={toggle}
+          summary={data?.summary ?? null}
+          generatedAt={data?.generatedAt ?? null}
+        />
 
         <TableControls
           view={view}
