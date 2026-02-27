@@ -177,13 +177,13 @@ python3 src/analyze.py --filter emerald_plus
 
 `compute_slope_iterations()` decomposes each champion's mastery learning curve into three signals:
 
-1. **Early slope** (`early_slope`) — smoothed WR gain across the first 3 intervals (5k–50k mastery, ~0–70 games). Drives the `slope_tier` label ("Easy Pickup" / "Mild Pickup" / "Hard Pickup" / "Very Hard Pickup").
+1. **Early slope** (`early_slope`) — smoothed WR gain across the first 3 intervals (5–100 games). Drives the `slope_tier` label ("Easy Pickup" / "Mild Pickup" / "Hard Pickup" / "Very Hard Pickup").
 2. **Games to competency** (`inflection_games`) — first bracket where smoothed WR reaches within 0.5 pp of peak. Converted from mastery points ÷ 700.
-3. **Late slope** (`late_slope`) — smoothed WR gain across the last 3 intervals (~100k–500k mastery). Drives the `growth_type` label ("Plateau" / "Gradual" / "Continual").
+3. **Late slope** (`late_slope`) — smoothed WR gain across the last 3 intervals (100k to end of available data, including 1M+ when ≥ 200 games). Drives the `growth_type` label ("Plateau" / "Gradual" / "Continual").
 
 **Smoothing:** A games-weighted 3-point moving average is applied to raw interval win rates before any metric computation. This prevents noisy low-sample brackets from corrupting results.
 
-**Interval filters:** `min >= 5000`, `games >= 200`, `max is not None` (excludes the 1M+ open bracket). Minimum 3 qualifying intervals required.
+**Interval filters:** `min >= 3500` (skip the 1–5 games band), `games >= 200`. Minimum 3 qualifying intervals required.
 
 **`slope_tier` thresholds** (early slope, pp):
 - Easy Pickup < 2, Mild Pickup 2–5, Hard Pickup 5–8, Very Hard Pickup ≥ 8

@@ -710,16 +710,19 @@ class Database:
         conn.row_factory = sqlite3.Row
 
         # Step 1: filtered match IDs
+        t0 = time.time()
         conn.execute(
             "CREATE TEMP TABLE _fm (match_id TEXT NOT NULL PRIMARY KEY) WITHOUT ROWID"
         )
         conn.executemany("INSERT INTO _fm VALUES (?)", [(m,) for m in match_ids])
         conn.commit()
-        logger.info(f"  Materialized {len(match_ids):,} filtered match IDs into _fm")
+        fm_elapsed = time.time() - t0
+        logger.info(f"  Materialized {len(match_ids):,} filtered match IDs into _fm  ({fm_elapsed:.1f}s / {fm_elapsed/60:.1f} min)")
 
         # Step 2: pre-join all needed columns once; index by champion_name so
         # subsequent GROUP BY champion_name queries scan in order (no sort needed).
         logger.info("  Materializing pre-joined participant data into _mp...")
+        t0 = time.time()
         conn.execute("""
             CREATE TEMP TABLE _mp AS
             SELECT
@@ -735,7 +738,8 @@ class Database:
         conn.execute("CREATE INDEX _idx_mp_champ ON _mp(champion_name)")
         conn.commit()
         row_count = conn.execute("SELECT COUNT(*) FROM _mp").fetchone()[0]
-        logger.info(f"  Materialized {row_count:,} rows into _mp")
+        mp_elapsed = time.time() - t0
+        logger.info(f"  Materialized {row_count:,} rows into _mp  ({mp_elapsed:.1f}s / {mp_elapsed/60:.1f} min)")
 
         self._analysis_conn = conn
 
@@ -896,17 +900,14 @@ class Database:
                                patch_filter: Optional[List[str]] = None) -> List[Dict]:
         """Return [{'interval_index', 'wins', 'games'}] — one per mastery interval."""
         interval_case = """CASE
-            WHEN mastery_points < 1000    THEN 0
-            WHEN mastery_points < 2000    THEN 1
-            WHEN mastery_points < 5000    THEN 2
-            WHEN mastery_points < 10000   THEN 3
-            WHEN mastery_points < 20000   THEN 4
-            WHEN mastery_points < 50000   THEN 5
-            WHEN mastery_points < 100000  THEN 6
-            WHEN mastery_points < 200000  THEN 7
-            WHEN mastery_points < 500000  THEN 8
-            WHEN mastery_points < 1000000 THEN 9
-            ELSE 10
+            WHEN mastery_points < 3500   THEN 0
+            WHEN mastery_points < 17500  THEN 1
+            WHEN mastery_points < 35000  THEN 2
+            WHEN mastery_points < 70000  THEN 3
+            WHEN mastery_points < 140000 THEN 4
+            WHEN mastery_points < 350000 THEN 5
+            WHEN mastery_points < 700000 THEN 6
+            ELSE 7
         END"""
         cur = self._analysis_conn.cursor()
         cur.execute(f"""
@@ -997,17 +998,14 @@ class Database:
             patch_filter: Optional[List[str]] = None) -> tuple:
         """Return (interval_rows, lane_rows) for per-champion mastery curves."""
         interval_case = """CASE
-            WHEN mastery_points < 1000    THEN 0
-            WHEN mastery_points < 2000    THEN 1
-            WHEN mastery_points < 5000    THEN 2
-            WHEN mastery_points < 10000   THEN 3
-            WHEN mastery_points < 20000   THEN 4
-            WHEN mastery_points < 50000   THEN 5
-            WHEN mastery_points < 100000  THEN 6
-            WHEN mastery_points < 200000  THEN 7
-            WHEN mastery_points < 500000  THEN 8
-            WHEN mastery_points < 1000000 THEN 9
-            ELSE 10
+            WHEN mastery_points < 3500   THEN 0
+            WHEN mastery_points < 17500  THEN 1
+            WHEN mastery_points < 35000  THEN 2
+            WHEN mastery_points < 70000  THEN 3
+            WHEN mastery_points < 140000 THEN 4
+            WHEN mastery_points < 350000 THEN 5
+            WHEN mastery_points < 700000 THEN 6
+            ELSE 7
         END"""
         cur = self._analysis_conn.cursor()
         cur.execute(f"""

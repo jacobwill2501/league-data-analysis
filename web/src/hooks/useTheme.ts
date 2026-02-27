@@ -5,7 +5,7 @@ export function useThemeMode() {
   const [mode, setMode] = useState<PaletteMode>(() => {
     const stored = localStorage.getItem('theme') as PaletteMode | null
     if (stored === 'dark' || stored === 'light') return stored
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    return 'dark'
   })
 
   const toggle = () => {

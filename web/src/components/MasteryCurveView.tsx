@@ -97,7 +97,7 @@ export function MasteryCurveView({ masteryChampionCurves, pabuThreshold }: Props
             {selectedChamp} — Win Rate by Mastery Interval
           </Typography>
           <ResponsiveContainer width="100%" height={400}>
-            <LineChart data={chartData} margin={{ top: 10, right: 40, left: 10, bottom: 50 }}>
+            <LineChart data={chartData} margin={{ top: 10, right: 40, left: 10, bottom: 60 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
               <XAxis
                 type="number"

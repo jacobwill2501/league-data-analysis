@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import React, { useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   useReactTable,
   getCoreRowModel,
@@ -20,10 +21,10 @@ import Chip from '@mui/material/Chip'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Tooltip from '@mui/material/Tooltip'
-import { LineChart, Line, ReferenceLine, YAxis } from 'recharts'
+import { LineChart, Line, ReferenceLine, YAxis, Tooltip as RechartsTooltip } from 'recharts'
 import type { MasteryChampionCurve, SlopeIterationStat } from '../types/analysis'
 import { ChampionIcon } from './ChampionIcon'
-import { fmtLane, fmtPct, fmtThreshold } from '../utils/format'
+import { fmtLane, fmtPct } from '../utils/format'
 
 type ChipColor = 'success' | 'warning' | 'error' | 'default' | 'info'
 
@@ -43,12 +44,20 @@ function SlopeSparkline({
   slopeTier: string | null
   masteryChampionCurves: Record<string, MasteryChampionCurve>
 }) {
+  const [tooltipState, setTooltipState] = useState<{ x: number; y: number; d: { label: string; rawWr: number; games: number } } | null>(null)
+
   const curve = masteryChampionCurves[champion]
   if (!curve) return <span style={{ color: '#666' }}>—</span>
 
   const rawData = curve.intervals
-    .filter(i => i.games >= 30 && i.min >= 5000)
-    .map((i, idx) => ({ idx, wr: +(i.win_rate * 100).toFixed(1) }))
+    .filter(i => i.games >= 30 && i.min >= 3500)
+    .map((i, idx) => ({
+      idx,
+      wr: +(i.win_rate * 100).toFixed(1),
+      rawWr: +(i.win_rate * 100).toFixed(2),
+      games: i.games,
+      label: i.label,
+    }))
 
   if (rawData.length < 2) return <span style={{ color: '#666' }}>—</span>
 
@@ -69,23 +78,59 @@ function SlopeSparkline({
   const lineColor = SLOPE_TIER_COLORS[slopeTier ?? ''] ?? '#90CAF9'
 
   return (
-    <LineChart
-      width={120}
-      height={44}
-      data={chartData}
-      margin={{ top: 6, right: 4, bottom: 6, left: 4 }}
-    >
-      <YAxis domain={domain} hide />
-      <ReferenceLine y={50} stroke="#555" strokeDasharray="2 2" strokeWidth={1} />
-      <Line
-        type="monotone"
-        dataKey="wr"
-        dot={false}
-        strokeWidth={1.5}
-        stroke={lineColor}
-        isAnimationActive={false}
-      />
-    </LineChart>
+    <>
+      <LineChart
+        width={120}
+        height={44}
+        data={chartData}
+        margin={{ top: 6, right: 4, bottom: 6, left: 4 }}
+        onMouseMove={(state, event) => {
+          const idx = state.activeIndex
+          if (idx !== undefined && idx !== null && chartData[idx as number]) {
+            const d = chartData[idx as number]
+            const e = event as React.MouseEvent
+            setTooltipState({ x: e.clientX, y: e.clientY, d })
+          } else {
+            setTooltipState(null)
+          }
+        }}
+        onMouseLeave={() => setTooltipState(null)}
+      >
+        <YAxis domain={domain} hide />
+        <ReferenceLine y={50} stroke="#555" strokeDasharray="2 2" strokeWidth={1} />
+        <RechartsTooltip content={() => null} />
+        <Line
+          type="monotone"
+          dataKey="wr"
+          dot={false}
+          activeDot={{ r: 3, fill: lineColor, strokeWidth: 0 }}
+          strokeWidth={1.5}
+          stroke={lineColor}
+          isAnimationActive={false}
+        />
+      </LineChart>
+      {tooltipState && createPortal(
+        <div style={{
+          position: 'fixed',
+          left: tooltipState.x + 12,
+          top: tooltipState.y - 72,
+          zIndex: 99999,
+          background: '#1e1e1e',
+          border: '1px solid #444',
+          borderRadius: 4,
+          padding: '4px 8px',
+          fontSize: 11,
+          lineHeight: 1.6,
+          whiteSpace: 'nowrap',
+          pointerEvents: 'none',
+        }}>
+          <div style={{ fontWeight: 600 }}>{tooltipState.d.label}</div>
+          <div>WR: {tooltipState.d.rawWr}%</div>
+          <div style={{ color: '#aaa' }}>{tooltipState.d.games.toLocaleString()} games</div>
+        </div>,
+        document.body
+      )}
+    </>
   )
 }
 
@@ -140,7 +185,7 @@ interface Props {
 
 export function SlopeIterationsView({ data, masteryChampionCurves }: Props) {
   const [sorting, setSorting] = useState<SortingState>([
-    { id: 'inflection_games', desc: false },
+    { id: 'slope_tier', desc: false },
   ])
 
   const columns = useMemo((): ColumnDef<SlopeIterationStat>[] => [
@@ -209,24 +254,6 @@ export function SlopeIterationsView({ data, masteryChampionCurves }: Props) {
       cell: info => fmtSlope(info.getValue<number | null>()),
     },
     {
-      id: 'inflection_games',
-      header: 'Games to Competency',
-      accessorKey: 'inflection_games',
-      enableSorting: true,
-      sortingFn: nullLastSortingFn,
-      cell: info => {
-        const v = info.getValue<number | null>()
-        return v === null || v === undefined ? 'N/A' : v.toLocaleString()
-      },
-    },
-    {
-      id: 'inflection_mastery',
-      header: 'Inflection Mastery',
-      accessorKey: 'inflection_mastery',
-      enableSorting: true,
-      cell: info => fmtThreshold(info.getValue<number | null>()),
-    },
-    {
       id: 'initial_wr',
       header: 'Starting WR',
       accessorKey: 'initial_wr',
@@ -262,15 +289,14 @@ export function SlopeIterationsView({ data, masteryChampionCurves }: Props) {
   })
 
   const COLUMN_TOOLTIPS: Record<string, string> = {
-    slope_tier:         'Early-mastery difficulty. Based on win rate gain in the first 3 mastery brackets (5k–50k points, ~0–70 games). Higher = more punishing to play before you\'ve learned the champion.',
-    growth_type:        'Whether the champion keeps improving at high mastery. Plateau = WR levels off after competency. Gradual = slow continued gains. Continual = still growing significantly at 100k+ mastery.',
-    curve:              'Win rate progression across mastery brackets (5k+ mastery only — matches the range used for all slope metrics). Color matches Pickup tier. Dashed line = 50% WR.',
-    early_slope:        'Win rate gain across the first 3 mastery brackets (5k–50k). Positive = champion gets better with early practice. Drives the Pickup tier label.',
-    late_slope:         'Win rate gain across the last 3 mastery brackets (~100k–500k). Positive = champion rewards deep mastery investment. Drives the Growth tier label.',
+    slope_tier:         'Early-mastery difficulty. Based on win rate gain in the first 3 game brackets (5–100 games). Higher = more punishing to play before you\'ve learned the champion.',
+    growth_type:        'Whether the champion keeps improving at high mastery. Plateau = WR levels off after competency. Gradual = slow continued gains. Continual = still growing significantly at 200+ games.',
+    curve:              'Win rate progression across game brackets (5+ games only — matches the range used for all slope metrics). Color matches Pickup tier. Dashed line = 50% WR.',
+    early_slope:        'Win rate gain across the first 3 game brackets (5–100 games). Positive = champion gets better with early practice. Drives the Pickup tier label.',
+    late_slope:         'Win rate gain across the last 3 mastery brackets (100k to end of available data). Positive = champion rewards deep mastery investment. Drives the Growth tier label.',
     total_slope:        'Total win rate gain from starting mastery to peak mastery (percentage points). Smoothed to reduce noise from low-sample brackets.',
-    inflection_games:   'Estimated games until you first reach near-peak performance (within 0.5 pp of peak WR). Based on mastery bracket entry points ÷ 700 mastery/game.',
-    inflection_mastery: 'The mastery point threshold where near-peak win rate is first reached. Games to Competency = this value ÷ 700.',
-    initial_wr:         'Win rate in the 5k–10k mastery bracket — your baseline performance with minimal experience.',
+
+    initial_wr:         'Win rate in the 5–25 games bracket — your baseline performance with minimal experience.',
     peak_wr:            'Highest observed win rate across all mastery brackets for this champion.',
     valid_intervals:    'Number of mastery brackets with sufficient data (≥ 200 games) used in this analysis.',
   }
@@ -407,7 +433,7 @@ export function SlopeIterationsView({ data, masteryChampionCurves }: Props) {
                   )
                 }
 
-                if (['inflection_games', 'inflection_mastery', 'valid_intervals'].includes(colId)) {
+                if (['valid_intervals'].includes(colId)) {
                   return (
                     <TableCell key={cell.id} sx={{ whiteSpace: 'nowrap' }}>
                       <Typography variant="body2" component="span" fontFamily="monospace">

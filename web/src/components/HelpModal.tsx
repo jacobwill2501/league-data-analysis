@@ -331,7 +331,7 @@ export function HelpModal({ open, onClose }: Props) {
             scoreLabel="Late Slope"
           />
           <P>
-            Late Slope = win rate gain across the last 3 mastery brackets (~100k–500k points).
+            Late Slope = win rate gain across the last 3 mastery brackets (100k to end of available data).
             Drives the Growth tier label.
           </P>
           <Typography variant="subtitle2" gutterBottom fontWeight="bold" sx={{ mt: 1 }}>
@@ -340,8 +340,8 @@ export function HelpModal({ open, onClose }: Props) {
           <P>
             Win rates are smoothed using a <strong>sample-weighted 3-point moving average</strong>{' '}
             before computing any metrics, so a single noisy bracket (e.g. a high-mastery interval
-            with only 200 games) doesn't skew the results. Intervals require ≥ 200 games and ≥ 5k
-            mastery to be included; the unbounded 1M+ bracket is excluded from slope computation.{' '}
+            with only 200 games) doesn't skew the results. Intervals require ≥ 200 games and ≥ 5
+            played games to be included.{' '}
             <strong>Games to Competency</strong> = <code>inflection_mastery / 700</code> where
             inflection mastery is the first bracket entry point where smoothed WR reaches within
             0.5 pp of peak. This metric is balance-agnostic: a champion that is strong at all skill

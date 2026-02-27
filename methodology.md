@@ -129,9 +129,9 @@ Results are saved as JSON files per elo filter.
 
 | Signal | Field | Phase |
 |---|---|---|
-| Pickup difficulty | `early_slope` / `slope_tier` | Cognitive (5k–50k mastery) |
+| Pickup difficulty | `early_slope` / `slope_tier` | Cognitive (5–100 games) |
 | Games to competency | `inflection_games` | Associative boundary |
-| Continual growth | `late_slope` / `growth_type` | Autonomous (100k–500k mastery) |
+| Continual growth | `late_slope` / `growth_type` | Autonomous (100k–end of data) |
 
 ### Curve Smoothing
 
@@ -139,8 +139,8 @@ Before computing any metric, raw interval win rates are smoothed using a **games
 
 ### Metric Computation
 
-- **Early slope** — smoothed WR gain across the first 3 intervals (indices 0→3, covering 5k–50k mastery, approximately the first 70 games).
-- **Late slope** — smoothed WR gain across the last 3 intervals (~100k–500k mastery). Only computed when there are ≥ 5 intervals so early and late don't overlap.
+- **Early slope** — smoothed WR gain across the first 3 intervals (5–100 games).
+- **Late slope** — smoothed WR gain across the last 3 intervals (100k to end of available data, including the 1M+ bracket when it has ≥ 200 games). Only computed when there are ≥ 5 intervals so early and late don't overlap.
 - **Total slope** — smoothed peak WR minus smoothed initial WR (percentage points).
 - **Inflection mastery** — first interval entry point where smoothed WR ≥ smoothed peak − 0.5 pp.
 - **Games to competency** — `inflection_mastery / 700` (approximate mastery per game).
@@ -167,9 +167,8 @@ Before computing any metric, raw interval win rates are smoothed using a **games
 ### Interval Filters
 
 Intervals must satisfy:
-- `min >= 5000` (skip 0–1k and 1k–5k bands, which are dominated by selection bias)
+- `min >= 3500` (skip the 1–5 games band, which is dominated by selection bias)
 - `games >= 200` (stricter threshold than the 100-game visualization threshold)
-- `max is not None` (exclude the unbounded 1M+ bracket from slope computation)
 
 At least 3 qualifying intervals are required to produce any metrics.
 

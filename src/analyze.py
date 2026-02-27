@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import sys
+import time
 from collections import defaultdict
 from typing import Dict, List, Optional
 
@@ -68,7 +69,7 @@ def _mastery_tier(score):
 
 
 MASTERY_PER_GAME = 700
-SLOPE_MIN_MASTERY = 5000   # Skip 0–1k and 1k–2k bands (selection bias dominated)
+SLOPE_MIN_MASTERY = 3500   # Skip 1–5 games band (selection bias dominated)
 SLOPE_MIN_GAMES   = 200    # Stricter sample threshold for slope vs. 100 for visualization
 SLOPE_PLATEAU_THRESHOLD = 0.5  # pp — WR within this of peak counts as "plateaued"
 
@@ -231,12 +232,10 @@ class MasteryAnalyzer:
         idx_to_stats = {r['interval_index']: r for r in rows}
 
         curve = []
-        for i, (lo, hi) in enumerate(WIN_RATE_INTERVALS):
+        for i, (lo, hi, label) in enumerate(WIN_RATE_INTERVALS):
             s = idx_to_stats.get(i)
             if s is None or s['games'] == 0:
                 continue
-            label = (f"{lo // 1000}k+" if hi == float('inf')
-                     else f"{lo // 1000}k-{hi // 1000}k")
             curve.append({
                 'interval': label,
                 'min': lo,
@@ -431,7 +430,7 @@ class MasteryAnalyzer:
         for champ, intervals in champ_interval.items():
             # Build ordered list of (midpoint, win_rate) for intervals with enough data
             points_wr = []
-            for idx, (lo, hi) in enumerate(WIN_RATE_INTERVALS):
+            for idx, (lo, hi, _label) in enumerate(WIN_RATE_INTERVALS):
                 s = intervals.get(idx)
                 if s is None or s['games'] < MINIMUM_SAMPLE_SIZE:
                     continue
@@ -560,13 +559,11 @@ class MasteryAnalyzer:
             most_common_lane = max(lane_counts, key=lane_counts.get) if lane_counts else None
 
             interval_list = []
-            for idx, (lo, hi) in enumerate(WIN_RATE_INTERVALS):
+            for idx, (lo, hi, label) in enumerate(WIN_RATE_INTERVALS):
                 s = intervals.get(idx)
                 if s is None or s['games'] < MINIMUM_SAMPLE_SIZE:
                     continue
 
-                label = (f"{lo // 1000}k+" if hi == float('inf')
-                         else f"{lo // 1000}k-{hi // 1000}k")
                 interval_list.append({
                     'label': label,
                     'min': lo,
@@ -609,12 +606,11 @@ class MasteryAnalyzer:
             valid_intervals = len(intervals)
 
             # Slope-specific filtered intervals: skip low-mastery noise bands,
-            # require stricter sample threshold, exclude unbounded 1M+ band
+            # require stricter sample threshold
             slope_ivs = [
                 iv for iv in intervals
                 if iv['min'] >= SLOPE_MIN_MASTERY
                 and iv['games'] >= SLOPE_MIN_GAMES
-                and iv['max'] is not None
             ]
 
             if len(slope_ivs) < 3:
@@ -649,7 +645,7 @@ class MasteryAnalyzer:
             early_end   = min(3, len(smoothed) - 1)
             early_slope = (smoothed[early_end] - smoothed[0]) * 100
 
-            # Late slope: gain across last 3 intervals (Autonomous phase, ~100k–500k mastery)
+            # Late slope: gain across last 3 intervals (Autonomous phase, 100k–end of data)
             # Only computed when there are enough intervals for early and late not to overlap.
             late_slope = None
             if len(smoothed) >= 5:
@@ -876,38 +872,68 @@ class MasteryAnalyzer:
         logger.info(f"Analysis: {self.elo_filter} ({self.filter_config['description']})")
         logger.info(f"{'='*60}\n")
 
+        pipeline_start = time.time()
         self.db.begin_analysis_session(self.elo_filter, self.patch_filter)
+        db_elapsed = time.time() - pipeline_start
+        logger.info(f"  DB materialization done in {db_elapsed:.1f}s ({db_elapsed/60:.1f} min)")
         try:
-            return self._analyze_inner()
+            return self._analyze_inner(pipeline_start)
         finally:
             self.db.end_analysis_session()
 
-    def _analyze_inner(self) -> Dict:
+    def _analyze_inner(self, pipeline_start: float) -> Dict:
         """Inner analysis pipeline — called with _fm already materialized."""
-        summary = self.compute_summary()
+        STEPS_TOTAL = 14  # 1 DB materialization + 13 compute steps
+        steps_done = [1]  # DB materialization already counted as step 1
+
+        def step(name, fn, *args, **kwargs):
+            n = steps_done[0] + 1
+            logger.info(f"  [{n}/{STEPS_TOTAL}] {name}...")
+            t0 = time.time()
+            result = fn(*args, **kwargs)
+            elapsed = time.time() - t0
+            steps_done[0] = n
+            total_so_far = time.time() - pipeline_start
+            remaining = STEPS_TOTAL - n
+            if remaining > 0:
+                eta_secs = (total_so_far / n) * remaining
+                finish_at = datetime.datetime.now() + datetime.timedelta(seconds=eta_secs)
+                logger.info(
+                    f"         done in {elapsed:.1f}s"
+                    f" | {remaining} steps left"
+                    f" — est. {eta_secs/60:.1f} min"
+                    f" (done ~{finish_at.strftime('%I:%M %p')})"
+                )
+            else:
+                logger.info(f"         done in {elapsed:.1f}s")
+            return result
+
+        summary = step("Summary", self.compute_summary)
         if summary.get('total_matches', 0) == 0:
             logger.error("No data to analyze!")
             return {}
 
-        distribution = self.compute_mastery_distribution()
-        overall_buckets = self.compute_overall_winrate_by_bucket()
-        winrate_curve = self.compute_winrate_curve()
-        champion_stats = self.compute_champion_stats()
-        lane_impact = self.compute_lane_impact(champion_stats)
+        distribution = step("Mastery distribution", self.compute_mastery_distribution)
+        overall_buckets = step("Overall WR by bucket", self.compute_overall_winrate_by_bucket)
+        winrate_curve = step("Win rate curve", self.compute_winrate_curve)
+        champion_stats = step("Champion stats", self.compute_champion_stats)
+        lane_impact = step("Lane impact", self.compute_lane_impact, champion_stats)
 
         # Fetch shared per-champion/interval data once; reused by three methods
-        interval_rows, lane_rows = self.db.get_mastery_curves_aggregated(
-            self.elo_filter, self.patch_filter)
-        games_to_50 = self.compute_games_to_50_winrate(interval_rows, lane_rows)
-        bias_champion_stats = self.compute_bias_champion_stats(games_to_50)
-        mastery_curves = self.compute_mastery_curves_by_champion(interval_rows, lane_rows)
-        slope_iterations = self.compute_slope_iterations(mastery_curves)
+        interval_rows, lane_rows = step(
+            "Load mastery curve data",
+            self.db.get_mastery_curves_aggregated, self.elo_filter, self.patch_filter)
+        games_to_50 = step("Games to 50% WR", self.compute_games_to_50_winrate, interval_rows, lane_rows)
+        bias_champion_stats = step("Bias champion stats", self.compute_bias_champion_stats, games_to_50)
+        mastery_curves = step("Mastery curves", self.compute_mastery_curves_by_champion, interval_rows, lane_rows)
+        slope_iterations = step("Slope iterations", self.compute_slope_iterations, mastery_curves)
 
         # Pabu: 30k medium boundary + elo-normalized threshold
         elo_avg_wr = summary['overall_win_rate']
-        pabu_champion_stats = self.compute_pabu_champion_stats()
-        pabu_games_to_threshold = self.compute_games_to_50_winrate(
-            interval_rows, lane_rows, threshold=elo_avg_wr)
+        pabu_champion_stats = step("Pabu champion stats", self.compute_pabu_champion_stats)
+        pabu_games_to_threshold = step(
+            "Pabu games to threshold",
+            self.compute_games_to_50_winrate, interval_rows, lane_rows, threshold=elo_avg_wr)
 
         # Bias rankings
         bias_instantly_viable = sorted(
@@ -1109,8 +1135,12 @@ def main():
     filters = list(ELO_FILTERS.keys()) if args.filter == 'all' else [args.filter]
     logger.info(f"Processing {len(filters)} filter(s)")
 
+    run_start = time.time()
+    filter_times = []
+
     for i, elo_filter in enumerate(tqdm(filters, desc="Analyzing filters", unit="filter"), 1):
         logger.info(f"Processing filter {i} of {len(filters)}: {elo_filter}")
+        filter_start = time.time()
         try:
             analyzer = MasteryAnalyzer(db, elo_filter, args.output, patch_versions)
             results = analyzer.analyze()
@@ -1165,10 +1195,27 @@ def main():
                         f"({entry['most_common_lane']})"
                     )
 
+            filter_elapsed = time.time() - filter_start
+            filter_times.append(filter_elapsed)
+            avg = sum(filter_times) / len(filter_times)
+            remaining = len(filters) - i
+            eta_secs = avg * remaining
+            finish_at = datetime.datetime.now() + datetime.timedelta(seconds=eta_secs)
+            logger.info(
+                f"\n  Timing: {elo_filter} took {filter_elapsed:.1f}s"
+                f" | avg {avg:.1f}s/filter"
+                + (f" | {remaining} remaining — est. {eta_secs/60:.1f} min"
+                   f" (done ~{finish_at.strftime('%I:%M %p')})"
+                   if remaining else "")
+            )
+
         except Exception as e:
+            filter_elapsed = time.time() - filter_start
+            filter_times.append(filter_elapsed)
             logger.error(f"Error analyzing {elo_filter}: {e}", exc_info=True)
 
-    logger.info("\nAnalysis complete!")
+    total_elapsed = time.time() - run_start
+    logger.info(f"\nAnalysis complete! Total time: {total_elapsed/60:.1f} min ({total_elapsed:.0f}s)")
 
 
 if __name__ == '__main__':

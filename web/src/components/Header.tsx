@@ -9,6 +9,7 @@ import Tooltip from '@mui/material/Tooltip'
 import Brightness4Icon from '@mui/icons-material/Brightness4'
 import Brightness7Icon from '@mui/icons-material/Brightness7'
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
+import GitHubIcon from '@mui/icons-material/GitHub'
 import type { PaletteMode } from '@mui/material'
 import type { EloFilter } from '../types/analysis'
 import { HelpModal } from './HelpModal'
@@ -71,6 +72,18 @@ export function Header({ elo, onEloChange, mode, onModeToggle, summary, generate
           <Tooltip title="Help & methodology">
             <IconButton onClick={() => setHelpOpen(true)} size="small">
               <HelpOutlineIcon />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="View source on GitHub">
+            <IconButton
+              component="a"
+              href="https://github.com/jacobwill2501/league-data-analysis"
+              target="_blank"
+              rel="noopener noreferrer"
+              size="small"
+            >
+              <GitHubIcon />
             </IconButton>
           </Tooltip>
 

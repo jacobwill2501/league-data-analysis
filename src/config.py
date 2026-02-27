@@ -161,18 +161,17 @@ CHART_FIGSIZE_MEDIUM = (10, 8)
 MASTERY_DISPLAY_CAP = 250000  # Cap mastery display at 250k for readability
 
 # Win Rate Intervals for Curve Analysis
+# Each entry: (min_mastery, max_mastery, display_label)
+# Boundaries use 700 mastery/game as the conversion factor.
 WIN_RATE_INTERVALS = [
-    (0, 1000),
-    (1000, 2000),
-    (2000, 5000),
-    (5000, 10000),
-    (10000, 20000),
-    (20000, 50000),
-    (50000, 100000),
-    (100000, 200000),
-    (200000, 500000),
-    (500000, 1000000),
-    (1000000, float('inf'))
+    (700,    3500,          '1–5 games'),
+    (3500,   17500,         '5–25 games'),
+    (17500,  35000,         '25–50 games'),
+    (35000,  70000,         '50–100 games'),
+    (70000,  140000,        '100–200 games'),
+    (140000, 350000,        '200–500 games'),
+    (350000, 700000,        '500–1000 games'),
+    (700000, float('inf'), '1000+ games'),
 ]
 
 # Lane Configuration
