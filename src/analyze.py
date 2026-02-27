@@ -19,8 +19,7 @@ from tqdm import tqdm
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import (ELO_FILTERS, MASTERY_BUCKETS, MINIMUM_SAMPLE_SIZE,
-                    WIN_RATE_INTERVALS, LANES, LANE_DISPLAY_NAMES,
-                    get_pabu_mastery_bucket)
+                    WIN_RATE_INTERVALS, LANES, LANE_DISPLAY_NAMES)
 from db import Database
 from utils import (setup_logging, format_number, format_percentage,
                    PatchManager, create_output_dirs)
@@ -68,6 +67,25 @@ def _mastery_tier(score):
     return 'Not Worth Mastering'
 
 
+MASTERY_PER_GAME = 700
+SLOPE_MIN_MASTERY = 5000   # Skip 0–1k and 1k–2k bands (selection bias dominated)
+SLOPE_MIN_GAMES   = 200    # Stricter sample threshold for slope vs. 100 for visualization
+SLOPE_PLATEAU_THRESHOLD = 0.5  # pp — WR within this of peak counts as "plateaued"
+
+
+def _slope_tier(total_slope):
+    """Assign a tier label based on total WR slope in percentage points"""
+    if total_slope is None:
+        return None
+    if total_slope < 2:
+        return 'Flat Curve'
+    if total_slope < 5:
+        return 'Gentle Slope'
+    if total_slope < 8:
+        return 'Moderate Slope'
+    return 'Steep Curve'
+
+
 class MasteryAnalyzer:
     """Analyzes champion mastery impact on win rates"""
 
@@ -79,78 +97,27 @@ class MasteryAnalyzer:
         self.patch_filter = patch_filter
         self.filter_config = ELO_FILTERS[elo_filter]
 
-        self.participants = []
-        self.mastery_data = {}
-
-    def load_data(self):
-        """Load and filter data from database"""
-        logger.info(f"Loading data for filter: {self.elo_filter}")
-        logger.info(f"  Tiers: {self.filter_config['tiers']}")
-
-        # Get filtered match IDs
-        match_ids = self.db.get_filtered_matches(self.elo_filter, self.patch_filter)
-        logger.info(f"  Filtered to {format_number(len(match_ids))} matches")
-
-        if not match_ids:
-            logger.warning("No matches found for this filter!")
-            return
-
-        # Load participants for those matches
-        self.participants = self.db.get_all_participants(match_ids)
-        logger.info(f"  Loaded {format_number(len(self.participants))} participant records")
-
-        # Load mastery data
-        self.mastery_data = self.db.get_all_mastery_dict()
-        logger.info(f"  Loaded {format_number(len(self.mastery_data))} mastery records")
-
     def compute_summary(self) -> Dict:
-        """Compute summary/verification statistics"""
+        """Compute summary/verification statistics via SQL aggregation."""
         logger.info("Computing summary statistics...")
 
-        unique_matches = set()
-        unique_players = set()
-        unique_champions = set()
-        total_wins = 0
-        region_match_counts = defaultdict(set)
-        participants_with_mastery = 0
-
-        for p in self.participants:
-            unique_matches.add(p['match_id'])
-            unique_players.add(p['puuid'])
-            unique_champions.add(p['champion_name'])
-
-            if p['win']:
-                total_wins += 1
-
-            # Determine region from match_id prefix
-            mid = p['match_id']
-            if mid.startswith('NA'):
-                region_match_counts['NA'].add(mid)
-            elif mid.startswith('EUW') or mid.startswith('EU'):
-                region_match_counts['EUW'].add(mid)
-            elif mid.startswith('KR'):
-                region_match_counts['KR'].add(mid)
-
-            key = (p['puuid'], p['champion_id'])
-            if key in self.mastery_data:
-                participants_with_mastery += 1
-
-        total = len(self.participants)
-        n_matches = len(unique_matches)
+        stats = self.db.get_summary_stats(self.elo_filter, self.patch_filter)
+        total = stats['total_participants']
+        total_wins = stats['total_wins']
 
         summary = {
-            'total_matches': n_matches,
+            'total_matches': stats['total_matches'],
             'total_participants': total,
-            'total_unique_players': len(unique_players),
-            'total_unique_champions': len(unique_champions),
+            'total_unique_players': stats['total_unique_players'],
+            'total_unique_champions': stats['total_unique_champions'],
             'overall_win_rate': total_wins / total if total > 0 else 0,
-            'region_balance': {r: len(ids) for r, ids in region_match_counts.items()},
-            'mastery_coverage': participants_with_mastery / total if total > 0 else 0,
+            'region_balance': stats['region_balance'],
+            'mastery_coverage': (
+                stats['participants_with_mastery'] / total if total > 0 else 0
+            ),
         }
 
-        # Verification checks
         self._run_verification(summary)
-
         return summary
 
     def _run_verification(self, summary: Dict):
@@ -179,31 +146,18 @@ class MasteryAnalyzer:
             logger.warning(f"Only {summary['total_unique_champions']} champions with data (expected >150)")
 
     def compute_mastery_distribution(self) -> Dict:
-        """Compute mastery distribution statistics"""
+        """Compute mastery distribution statistics via SQL aggregation."""
         logger.info("Computing mastery distribution...")
 
-        mastery_values = []
-        bucket_counts = defaultdict(int)
-        lane_bucket_counts = defaultdict(lambda: defaultdict(int))
-
-        for p in self.participants:
-            key = (p['puuid'], p['champion_id'])
-            if key not in self.mastery_data:
-                continue
-
-            points = self.mastery_data[key]['mastery_points']
-            mastery_values.append(points)
-            bucket = get_mastery_bucket(points)
-            bucket_counts[bucket] += 1
-
-            lane = p.get('individual_position')
-            if lane:
-                lane_bucket_counts[lane][bucket] += 1
+        # Sorted list for percentile computation (~100 MB, vs 6 GB full load)
+        mastery_values = self.db.get_mastery_points_list(
+            self.elo_filter, self.patch_filter)
+        bucket_counts, lane_bucket_counts = self.db.get_mastery_distribution_extras(
+            self.elo_filter, self.patch_filter)
 
         if not mastery_values:
             return {}
 
-        mastery_values.sort()
         n = len(mastery_values)
 
         def percentile(pct):
@@ -219,87 +173,58 @@ class MasteryAnalyzer:
             'p90': percentile(90),
             'p95': percentile(95),
             'p99': percentile(99),
-            'bucket_counts': dict(bucket_counts),
+            'bucket_counts': bucket_counts,
             'bucket_percentages': {
                 b: cnt / n * 100 for b, cnt in bucket_counts.items()
             },
-            'by_lane': {
-                lane: dict(counts) for lane, counts in lane_bucket_counts.items()
-            },
-            'raw_values': mastery_values,  # For histogram visualization
+            'by_lane': lane_bucket_counts,
         }
 
         return distribution
 
     def compute_overall_winrate_by_bucket(self) -> Dict:
-        """Compute overall win rate by mastery bucket"""
+        """Compute overall win rate by mastery bucket via SQL aggregation."""
         logger.info("Computing overall win rate by bucket...")
 
-        stats = defaultdict(lambda: {'wins': 0, 'games': 0})
-
-        for p in self.participants:
-            key = (p['puuid'], p['champion_id'])
-            if key not in self.mastery_data:
-                continue
-
-            points = self.mastery_data[key]['mastery_points']
-            bucket = get_mastery_bucket(points)
-            stats[bucket]['games'] += 1
-            if p['win']:
-                stats[bucket]['wins'] += 1
-
+        rows = self.db.get_winrate_by_bucket(self.elo_filter, self.patch_filter)
         results = {}
-        for bucket in ['low', 'medium', 'high']:
-            s = stats[bucket]
-            if s['games'] > 0:
-                results[bucket] = {
-                    'win_rate': s['wins'] / s['games'],
-                    'games': s['games'],
+        for row in rows:
+            if row['games'] > 0:
+                results[row['bucket']] = {
+                    'win_rate': row['wins'] / row['games'],
+                    'games': row['games'],
                 }
-
         return results
 
     def compute_winrate_curve(self) -> List[Dict]:
-        """Compute win rate at various mastery intervals"""
+        """Compute win rate at various mastery intervals via SQL aggregation."""
         logger.info("Computing win rate curve...")
 
-        interval_stats = defaultdict(lambda: {'wins': 0, 'games': 0})
-
-        for p in self.participants:
-            key = (p['puuid'], p['champion_id'])
-            if key not in self.mastery_data:
-                continue
-
-            points = self.mastery_data[key]['mastery_points']
-
-            for i, (lo, hi) in enumerate(WIN_RATE_INTERVALS):
-                if lo <= points < hi:
-                    interval_stats[i]['games'] += 1
-                    if p['win']:
-                        interval_stats[i]['wins'] += 1
-                    break
+        rows = self.db.get_winrate_curve_data(self.elo_filter, self.patch_filter)
+        idx_to_stats = {r['interval_index']: r for r in rows}
 
         curve = []
         for i, (lo, hi) in enumerate(WIN_RATE_INTERVALS):
-            s = interval_stats[i]
-            if s['games'] > 0:
-                if hi == float('inf'):
-                    label = f"{lo // 1000}k+"
-                else:
-                    label = f"{lo // 1000}k-{hi // 1000}k"
-                curve.append({
-                    'interval': label,
-                    'min': lo,
-                    'max': hi if hi != float('inf') else None,
-                    'win_rate': s['wins'] / s['games'],
-                    'games': s['games'],
-                })
-
+            s = idx_to_stats.get(i)
+            if s is None or s['games'] == 0:
+                continue
+            label = (f"{lo // 1000}k+" if hi == float('inf')
+                     else f"{lo // 1000}k-{hi // 1000}k")
+            curve.append({
+                'interval': label,
+                'min': lo,
+                'max': hi if hi != float('inf') else None,
+                'win_rate': s['wins'] / s['games'],
+                'games': s['games'],
+            })
         return curve
 
     def compute_champion_stats(self) -> Dict:
-        """Compute per-champion statistics"""
+        """Compute per-champion statistics via SQL aggregation."""
         logger.info("Computing per-champion statistics...")
+
+        bucket_rows, lane_rows = self.db.get_champion_stats_aggregated(
+            self.elo_filter, self.patch_filter)
 
         champ_data = defaultdict(lambda: {
             'low': {'wins': 0, 'games': 0},
@@ -307,23 +232,11 @@ class MasteryAnalyzer:
             'high': {'wins': 0, 'games': 0},
             'lane_counts': defaultdict(int),
         })
-
-        for p in self.participants:
-            key = (p['puuid'], p['champion_id'])
-            if key not in self.mastery_data:
-                continue
-
-            champ = p['champion_name']
-            points = self.mastery_data[key]['mastery_points']
-            bucket = get_mastery_bucket(points)
-
-            champ_data[champ][bucket]['games'] += 1
-            if p['win']:
-                champ_data[champ][bucket]['wins'] += 1
-
-            lane = p.get('individual_position')
-            if lane:
-                champ_data[champ]['lane_counts'][lane] += 1
+        for row in bucket_rows:
+            champ_data[row['champion_name']][row['bucket']]['wins'] = row['wins']
+            champ_data[row['champion_name']][row['bucket']]['games'] = row['games']
+        for row in lane_rows:
+            champ_data[row['champion_name']]['lane_counts'][row['lane']] = row['cnt']
 
         results = {}
         low_data_champs = []
@@ -395,29 +308,20 @@ class MasteryAnalyzer:
         """Compute per-champion statistics using Pabu mastery buckets (30k medium boundary)."""
         logger.info("Computing Pabu per-champion statistics (30k medium boundary)...")
 
+        bucket_rows, lane_rows = self.db.get_pabu_champion_stats_aggregated(
+            self.elo_filter, self.patch_filter)
+
         champ_data = defaultdict(lambda: {
             'low': {'wins': 0, 'games': 0},
             'medium': {'wins': 0, 'games': 0},
             'high': {'wins': 0, 'games': 0},
             'lane_counts': defaultdict(int),
         })
-
-        for p in self.participants:
-            key = (p['puuid'], p['champion_id'])
-            if key not in self.mastery_data:
-                continue
-
-            champ = p['champion_name']
-            points = self.mastery_data[key]['mastery_points']
-            bucket = get_pabu_mastery_bucket(points)
-
-            champ_data[champ][bucket]['games'] += 1
-            if p['win']:
-                champ_data[champ][bucket]['wins'] += 1
-
-            lane = p.get('individual_position')
-            if lane:
-                champ_data[champ]['lane_counts'][lane] += 1
+        for row in bucket_rows:
+            champ_data[row['champion_name']][row['bucket']]['wins'] = row['wins']
+            champ_data[row['champion_name']][row['bucket']]['games'] = row['games']
+        for row in lane_rows:
+            champ_data[row['champion_name']]['lane_counts'][row['lane']] = row['cnt']
 
         results = {}
 
@@ -469,42 +373,31 @@ class MasteryAnalyzer:
 
         return results
 
-    def compute_games_to_50_winrate(self, threshold: float = 0.50) -> List[Dict]:
+    def compute_games_to_50_winrate(self, interval_rows: List[Dict],
+                                     lane_rows: List[Dict],
+                                     threshold: float = 0.50) -> List[Dict]:
         """Estimate how many games it takes each champion to reach the win rate threshold.
 
-        Uses WIN_RATE_INTERVALS to compute per-champion win rates at each
-        mastery interval, finds where the curve crosses `threshold`, and converts
-        the mastery-point threshold to an approximate game count (~700 pts/game).
+        Uses pre-aggregated per-champion/interval data (from SQL), finds where
+        the curve crosses `threshold`, and converts the mastery-point threshold
+        to an approximate game count (~700 pts/game).
 
         Args:
-            threshold: Win rate threshold to find crossing for (default 0.50).
+            interval_rows: Aggregated rows from get_mastery_curves_aggregated().
+            lane_rows:      Lane count rows from get_mastery_curves_aggregated().
+            threshold:      Win rate threshold to find crossing for (default 0.50).
         """
         logger.info(f"Computing games to {threshold:.1%} win rate...")
 
-        MASTERY_PER_GAME = 700
+        champ_interval: Dict = defaultdict(
+            lambda: defaultdict(lambda: {'wins': 0, 'games': 0}))
+        champ_lanes: Dict = defaultdict(lambda: defaultdict(int))
 
-        # Accumulate per-champion, per-interval stats
-        champ_interval = defaultdict(lambda: defaultdict(lambda: {'wins': 0, 'games': 0}))
-        champ_lanes = defaultdict(lambda: defaultdict(int))
-
-        for p in self.participants:
-            key = (p['puuid'], p['champion_id'])
-            if key not in self.mastery_data:
-                continue
-
-            champ = p['champion_name']
-            points = self.mastery_data[key]['mastery_points']
-
-            lane = p.get('individual_position')
-            if lane:
-                champ_lanes[champ][lane] += 1
-
-            for idx, (lo, hi) in enumerate(WIN_RATE_INTERVALS):
-                if lo <= points < hi:
-                    champ_interval[champ][idx]['games'] += 1
-                    if p['win']:
-                        champ_interval[champ][idx]['wins'] += 1
-                    break
+        for row in interval_rows:
+            champ_interval[row['champion_name']][row['interval_index']]['wins'] = row['wins']
+            champ_interval[row['champion_name']][row['interval_index']]['games'] = row['games']
+        for row in lane_rows:
+            champ_lanes[row['champion_name']][row['lane']] = row['cnt']
 
         results = []
 
@@ -613,35 +506,25 @@ class MasteryAnalyzer:
 
         return results
 
-    def compute_mastery_curves_by_champion(self) -> Dict:
+    def compute_mastery_curves_by_champion(self, interval_rows: List[Dict],
+                                           lane_rows: List[Dict]) -> Dict:
         """Compute per-champion win rate at each mastery interval.
 
+        Uses pre-aggregated per-champion/interval data (from SQL).
         Returns a dict keyed by champion name with lane and a list of interval
         stats (only intervals meeting MINIMUM_SAMPLE_SIZE).
         """
         logger.info("Computing mastery curves by champion...")
 
-        champ_interval = defaultdict(lambda: defaultdict(lambda: {'wins': 0, 'games': 0}))
-        champ_lanes = defaultdict(lambda: defaultdict(int))
+        champ_interval: Dict = defaultdict(
+            lambda: defaultdict(lambda: {'wins': 0, 'games': 0}))
+        champ_lanes: Dict = defaultdict(lambda: defaultdict(int))
 
-        for p in self.participants:
-            key = (p['puuid'], p['champion_id'])
-            if key not in self.mastery_data:
-                continue
-
-            champ = p['champion_name']
-            points = self.mastery_data[key]['mastery_points']
-
-            lane = p.get('individual_position')
-            if lane:
-                champ_lanes[champ][lane] += 1
-
-            for idx, (lo, hi) in enumerate(WIN_RATE_INTERVALS):
-                if lo <= points < hi:
-                    champ_interval[champ][idx]['games'] += 1
-                    if p['win']:
-                        champ_interval[champ][idx]['wins'] += 1
-                    break
+        for row in interval_rows:
+            champ_interval[row['champion_name']][row['interval_index']]['wins'] = row['wins']
+            champ_interval[row['champion_name']][row['interval_index']]['games'] = row['games']
+        for row in lane_rows:
+            champ_lanes[row['champion_name']][row['lane']] = row['cnt']
 
         results = {}
 
@@ -655,11 +538,8 @@ class MasteryAnalyzer:
                 if s is None or s['games'] < MINIMUM_SAMPLE_SIZE:
                     continue
 
-                if hi == float('inf'):
-                    label = f"{lo // 1000}k+"
-                else:
-                    label = f"{lo // 1000}k-{hi // 1000}k"
-
+                label = (f"{lo // 1000}k+" if hi == float('inf')
+                         else f"{lo // 1000}k-{hi // 1000}k")
                 interval_list.append({
                     'label': label,
                     'min': lo,
@@ -677,6 +557,96 @@ class MasteryAnalyzer:
         logger.info(f"  Champions with mastery curve data: {len(results)}")
         return results
 
+    def compute_slope_iterations(self, mastery_curves: Dict) -> List[Dict]:
+        """Compute learning curve steepness for each champion.
+
+        For each champion, measures how quickly win rate improves as mastery
+        accumulates. Uses the already-computed mastery_curves data.
+
+        Returns a list of per-champion dicts sorted by slope tier (flat first),
+        then inflection_games ascending (null last).
+        """
+        logger.info("Computing slope iterations...")
+
+        results = []
+
+        def _geomid(iv):
+            """Geometric midpoint of a bounded interval."""
+            return (iv['min'] * iv['max']) ** 0.5
+
+        for champ, curve in mastery_curves.items():
+            lane = curve.get('lane')
+            intervals = list(curve.get('intervals', []))
+
+            # Visualization-quality count (used in output for data-quality context)
+            valid_intervals = len(intervals)
+
+            # Slope-specific filtered intervals: skip low-mastery noise bands,
+            # require stricter sample threshold, exclude unbounded 1M+ band
+            slope_ivs = [
+                iv for iv in intervals
+                if iv['min'] >= SLOPE_MIN_MASTERY
+                and iv['games'] >= SLOPE_MIN_GAMES
+                and iv['max'] is not None
+            ]
+
+            if len(slope_ivs) < 3:
+                results.append({
+                    'champion': champ,
+                    'most_common_lane': lane,
+                    'initial_wr': None,
+                    'peak_wr': None,
+                    'total_slope': None,
+                    'inflection_mastery': None,
+                    'inflection_games': None,
+                    'slope_tier': None,
+                    'valid_intervals': valid_intervals,
+                })
+                continue
+
+            initial_wr = slope_ivs[0]['win_rate']
+            peak_wr = max(iv['win_rate'] for iv in slope_ivs)
+            total_slope = (peak_wr - initial_wr) * 100  # percentage points, unrounded
+
+            inflection_mastery = None
+            inflection_games = None
+
+            if total_slope > 0:
+                near_peak_wr = peak_wr - (SLOPE_PLATEAU_THRESHOLD / 100)
+                for iv in slope_ivs:
+                    if iv['win_rate'] >= near_peak_wr:
+                        inflection_mastery = iv['min']  # entry point to the plateau bucket
+                        inflection_games = round(inflection_mastery / MASTERY_PER_GAME)
+                        break
+
+            results.append({
+                'champion': champ,
+                'most_common_lane': lane,
+                'initial_wr': round(initial_wr, 4),
+                'peak_wr': round(peak_wr, 4),
+                'total_slope': round(total_slope, 2),
+                'inflection_mastery': inflection_mastery,
+                'inflection_games': inflection_games,
+                'slope_tier': _slope_tier(total_slope),
+                'valid_intervals': valid_intervals,
+            })
+
+        slope_tier_order = {
+            'Flat Curve': 0,
+            'Gentle Slope': 1,
+            'Moderate Slope': 2,
+            'Steep Curve': 3,
+        }
+
+        def sort_key(entry):
+            tier_idx = slope_tier_order.get(entry.get('slope_tier'), len(slope_tier_order))
+            ig = entry.get('inflection_games')
+            return (tier_idx, ig if ig is not None else float('inf'))
+
+        results.sort(key=sort_key)
+        logger.info(f"  Champions with slope data: {len(results)}")
+        return results
+
     def compute_bias_champion_stats(self, games_to_50: List[Dict]) -> Dict:
         """Compute per-champion statistics using bias (per-champion) mastery buckets.
 
@@ -685,12 +655,13 @@ class MasteryAnalyzer:
           - 'always above 50%'→ (no Low), Medium: 0→100k, High: 100k+
           - 'never reaches 50%' → Low: 0→100k, (no Medium), High: 100k+
           - 'low data'        → skip entirely
+
+        Uses a streaming SQL cursor so only O(n_champions) data lives in memory.
         """
         logger.info("Computing bias per-champion statistics...")
 
         HIGH_THRESHOLD = MASTERY_BUCKETS['medium']['max']  # 100_000
 
-        # Build lookup from champion name → g50 entry
         g50_by_champ = {entry['champion_name']: entry for entry in games_to_50}
 
         champ_data = defaultdict(lambda: {
@@ -700,13 +671,10 @@ class MasteryAnalyzer:
             'lane_counts': defaultdict(int),
         })
 
-        for p in self.participants:
-            key = (p['puuid'], p['champion_id'])
-            if key not in self.mastery_data:
-                continue
+        for champion_name, mastery_points, win, lane in self.db.iter_bias_mastery_data(
+                self.elo_filter, self.patch_filter):
 
-            champ = p['champion_name']
-            g50_entry = g50_by_champ.get(champ)
+            g50_entry = g50_by_champ.get(champion_name)
             if g50_entry is None:
                 continue
 
@@ -714,32 +682,29 @@ class MasteryAnalyzer:
             if status == 'low data':
                 continue
 
-            points = self.mastery_data[key]['mastery_points']
             threshold = g50_entry['mastery_threshold']
 
             if status == 'always above 50%':
-                bucket = 'medium' if points < HIGH_THRESHOLD else 'high'
+                bucket = 'medium' if mastery_points < HIGH_THRESHOLD else 'high'
             elif status == 'crosses 50%':
                 if threshold is None:
                     continue
-                if points < threshold:
+                if mastery_points < threshold:
                     bucket = 'low'
-                elif points < HIGH_THRESHOLD:
+                elif mastery_points < HIGH_THRESHOLD:
                     bucket = 'medium'
                 else:
                     bucket = 'high'
             elif status == 'never reaches 50%':
-                bucket = 'low' if points < HIGH_THRESHOLD else 'high'
+                bucket = 'low' if mastery_points < HIGH_THRESHOLD else 'high'
             else:
                 continue
 
-            champ_data[champ][bucket]['games'] += 1
-            if p['win']:
-                champ_data[champ][bucket]['wins'] += 1
-
-            lane = p.get('individual_position')
+            champ_data[champion_name][bucket]['games'] += 1
+            if win:
+                champ_data[champion_name][bucket]['wins'] += 1
             if lane:
-                champ_data[champ]['lane_counts'][lane] += 1
+                champ_data[champion_name]['lane_counts'][lane] += 1
 
         results = {}
 
@@ -856,31 +821,43 @@ class MasteryAnalyzer:
         return results
 
     def analyze(self) -> Dict:
-        """Run the full analysis pipeline"""
+        """Run the full analysis pipeline (all aggregation done in SQLite)."""
         logger.info(f"\n{'='*60}")
         logger.info(f"Analysis: {self.elo_filter} ({self.filter_config['description']})")
         logger.info(f"{'='*60}\n")
 
-        self.load_data()
+        self.db.begin_analysis_session(self.elo_filter, self.patch_filter)
+        try:
+            return self._analyze_inner()
+        finally:
+            self.db.end_analysis_session()
 
-        if not self.participants:
+    def _analyze_inner(self) -> Dict:
+        """Inner analysis pipeline — called with _fm already materialized."""
+        summary = self.compute_summary()
+        if summary.get('total_matches', 0) == 0:
             logger.error("No data to analyze!")
             return {}
 
-        summary = self.compute_summary()
         distribution = self.compute_mastery_distribution()
         overall_buckets = self.compute_overall_winrate_by_bucket()
         winrate_curve = self.compute_winrate_curve()
         champion_stats = self.compute_champion_stats()
         lane_impact = self.compute_lane_impact(champion_stats)
-        games_to_50 = self.compute_games_to_50_winrate()
+
+        # Fetch shared per-champion/interval data once; reused by three methods
+        interval_rows, lane_rows = self.db.get_mastery_curves_aggregated(
+            self.elo_filter, self.patch_filter)
+        games_to_50 = self.compute_games_to_50_winrate(interval_rows, lane_rows)
         bias_champion_stats = self.compute_bias_champion_stats(games_to_50)
-        mastery_curves = self.compute_mastery_curves_by_champion()
+        mastery_curves = self.compute_mastery_curves_by_champion(interval_rows, lane_rows)
+        slope_iterations = self.compute_slope_iterations(mastery_curves)
 
         # Pabu: 30k medium boundary + elo-normalized threshold
         elo_avg_wr = summary['overall_win_rate']
         pabu_champion_stats = self.compute_pabu_champion_stats()
-        pabu_games_to_threshold = self.compute_games_to_50_winrate(threshold=elo_avg_wr)
+        pabu_games_to_threshold = self.compute_games_to_50_winrate(
+            interval_rows, lane_rows, threshold=elo_avg_wr)
 
         # Bias rankings
         bias_instantly_viable = sorted(
@@ -1009,6 +986,7 @@ class MasteryAnalyzer:
                 {'champion': c, **s} for c, s in bias_best_investment
             ],
             'mastery_curves': mastery_curves,
+            'slope_iterations': slope_iterations,
             'pabu_champion_stats': pabu_champion_stats,
             'pabu_games_to_threshold': pabu_games_to_threshold,
             'pabu_easiest_to_learn': [

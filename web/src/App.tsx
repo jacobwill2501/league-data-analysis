@@ -4,13 +4,14 @@ import Box from '@mui/material/Box'
 import CircularProgress from '@mui/material/CircularProgress'
 import Alert from '@mui/material/Alert'
 import Typography from '@mui/material/Typography'
-import type { ChampionStat, EloFilter, ViewMode } from './types/analysis'
+import type { ChampionStat, EloFilter, SlopeIterationStat, ViewMode } from './types/analysis'
 import { useAnalysisData } from './hooks/useAnalysisData'
 import { useThemeMode } from './hooks/useTheme'
 import { Header } from './components/Header'
 import { TableControls } from './components/TableControls'
 import { ChampionTable } from './components/ChampionTable'
 import { MasteryCurveView } from './components/MasteryCurveView'
+import { SlopeIterationsView } from './components/SlopeIterationsView'
 
 const LANE_MAP: Record<string, string> = {
   TOP: 'Top',
@@ -68,7 +69,7 @@ export function App() {
   }, [data, view])
 
   const filteredChampions = useMemo((): ChampionStat[] => {
-    if (view === 'mastery_curve' || view === 'pabu_mastery_curve') return []
+    if (view === 'mastery_curve' || view === 'pabu_mastery_curve' || view === 'slope_iterations') return []
     let rows = sourceRows
 
     if (search.trim()) {
@@ -83,9 +84,26 @@ export function App() {
     return rows
   }, [sourceRows, search, lane, view])
 
+  const filteredSlope = useMemo((): SlopeIterationStat[] => {
+    if (view !== 'slope_iterations' || !data) return []
+    let rows = data.slopeIterations
+
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      rows = rows.filter(r => r.champion.toLowerCase().includes(q))
+    }
+
+    if (lane !== 'ALL') {
+      rows = rows.filter(r => getLaneDisplay(r.most_common_lane) === lane)
+    }
+
+    return rows
+  }, [data, view, search, lane])
+
   const isMasteryCurve = view === 'mastery_curve' || view === 'pabu_mastery_curve'
-  const rowCount = isMasteryCurve ? 0 : filteredChampions.length
-  const totalCount = isMasteryCurve ? 0 : sourceRows.length
+  const isSlopeView = view === 'slope_iterations'
+  const rowCount = isMasteryCurve ? 0 : isSlopeView ? filteredSlope.length : filteredChampions.length
+  const totalCount = isMasteryCurve ? 0 : isSlopeView ? (data?.slopeIterations.length ?? 0) : sourceRows.length
 
   return (
     <ThemeProvider theme={theme}>
@@ -130,15 +148,17 @@ export function App() {
           )}
 
           {!loading && !error && data && (
-            isMasteryCurve
-              ? <MasteryCurveView
-                  masteryChampionCurves={data.masteryChampionCurves}
-                  pabuThreshold={view === 'pabu_mastery_curve' ? data.overallWinRate : undefined}
-                />
-              : <ChampionTable
-                  data={filteredChampions}
-                  view={view as Exclude<ViewMode, 'mastery_curve' | 'pabu_mastery_curve'>}
-                />
+            isSlopeView
+              ? <SlopeIterationsView data={filteredSlope} masteryChampionCurves={data.masteryChampionCurves} />
+              : isMasteryCurve
+                ? <MasteryCurveView
+                    masteryChampionCurves={data.masteryChampionCurves}
+                    pabuThreshold={view === 'pabu_mastery_curve' ? data.overallWinRate : undefined}
+                  />
+                : <ChampionTable
+                    data={filteredChampions}
+                    view={view as Exclude<ViewMode, 'mastery_curve' | 'pabu_mastery_curve' | 'slope_iterations'>}
+                  />
           )}
         </Box>
       </Box>

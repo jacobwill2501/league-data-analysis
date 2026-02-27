@@ -282,6 +282,47 @@ export function HelpModal({ open, onClose }: Props) {
 
         <Divider sx={{ my: 2 }} />
 
+        <Section title="Slope Iterations (Beta)">
+          <P>
+            <strong>Slope Iterations</strong> answers: <em>"How long does it actually take before
+            you've mostly figured out this champion?"</em> It looks at how much your win rate
+            improves as you accumulate mastery points, rather than whether a champion is strong or
+            weak overall. Champions with a <strong>Flat Curve</strong> barely improve with
+            experience — they're immediately playable. Champions with a{' '}
+            <strong>Steep Curve</strong> need many games before you unlock their potential.{' '}
+            <strong>Games to Competency</strong> is the estimated number of games until 80% of the
+            possible win rate improvement is captured. Lower = easier to pick up.
+          </P>
+          <Typography variant="subtitle2" gutterBottom fontWeight="bold" sx={{ mt: 1 }}>
+            Technical Details
+          </Typography>
+          <P>
+            Win rate is measured across 11 mastery intervals (0–1k, 1k–2k, 2k–5k, 5k–10k, 20k,
+            50k, 100k, 200k, 500k, 1M, 1M+ points), filtered to intervals with ≥ 100 games.{' '}
+            <strong>Total Slope</strong> = <code>(peak_WR − initial_WR) × 100</code> in percentage
+            points. <strong>Inflection Mastery</strong> is found by iterating consecutive intervals
+            and locating where the cumulative WR gain reaches 80% of total slope (linearly
+            interpolated). <strong>Games to Competency</strong> = <code>inflection_mastery / 700</code>{' '}
+            (the approximate mastery points earned per game). This metric is balance-agnostic: a
+            champion that is strong at all skill levels will have a Flat Curve, not an artificially
+            easy one.
+          </P>
+          <TierTable
+            rows={[
+              { tier: 'Flat Curve',     score: '< 2 pp' },
+              { tier: 'Gentle Slope',   score: '2–5 pp' },
+              { tier: 'Moderate Slope', score: '5–8 pp' },
+              { tier: 'Steep Curve',    score: '> 8 pp' },
+            ]}
+            scoreLabel="Total Slope"
+          />
+          <P>
+            <em>This view is experimental and may change in future releases.</em>
+          </P>
+        </Section>
+
+        <Divider sx={{ my: 2 }} />
+
         <Section title="Pabu Beta Views (β)">
           <P>
             The <strong>Pabu β</strong> views are experimental analyses that apply an elo-normalized

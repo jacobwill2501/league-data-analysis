@@ -50,6 +50,7 @@ class Database:
         """
         self.db_path = db_path
         self._connection = None
+        self._analysis_conn = None
 
     @contextmanager
     def get_connection(self):
@@ -682,6 +683,378 @@ class Database:
             cursor = conn.cursor()
             cursor.execute(query, [region] + tiers)
             return [row[0] for row in cursor.fetchall()]
+
+    # ---- SQL-aggregation methods (OOM-safe analysis) ----
+
+    def begin_analysis_session(self, elo_filter: str, patch_filter=None):
+        """Materialize filtered match IDs and pre-joined participant data for the session.
+
+        Creates two temp tables:
+          _fm  — filtered match IDs (WITHOUT ROWID, PK index for O(log n) join)
+          _mp  — pre-joined (match_participants JOIN _fm JOIN champion_mastery) with
+                 only the columns needed for analysis, indexed by champion_name.
+
+        All subsequent aggregation queries run against _mp (a single small table),
+        avoiding repeated 3-way JOINs that cause SQLite to choose bad query plans
+        when champion_name is in the GROUP BY.
+        """
+        if self._analysis_conn is not None:
+            self.end_analysis_session()
+        match_ids = self.get_filtered_matches(elo_filter, patch_filter)
+        conn = sqlite3.connect(self.db_path, timeout=300)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=300000")
+        conn.execute("PRAGMA temp_store=MEMORY")
+        conn.execute("PRAGMA cache_size = -524288")   # 512 MB page cache
+        conn.execute("PRAGMA mmap_size = 4294967296") # 4 GB memory-mapped I/O
+        conn.row_factory = sqlite3.Row
+
+        # Step 1: filtered match IDs
+        conn.execute(
+            "CREATE TEMP TABLE _fm (match_id TEXT NOT NULL PRIMARY KEY) WITHOUT ROWID"
+        )
+        conn.executemany("INSERT INTO _fm VALUES (?)", [(m,) for m in match_ids])
+        conn.commit()
+        logger.info(f"  Materialized {len(match_ids):,} filtered match IDs into _fm")
+
+        # Step 2: pre-join all needed columns once; index by champion_name so
+        # subsequent GROUP BY champion_name queries scan in order (no sort needed).
+        logger.info("  Materializing pre-joined participant data into _mp...")
+        conn.execute("""
+            CREATE TEMP TABLE _mp AS
+            SELECT
+                mp.champion_name,
+                mp.individual_position,
+                CAST(mp.win AS INTEGER)                AS win,
+                COALESCE(cm.mastery_points, 0)         AS mastery_points
+            FROM match_participants mp
+            JOIN _fm fm ON mp.match_id = fm.match_id
+            JOIN champion_mastery cm
+                ON mp.puuid = cm.puuid AND mp.champion_id = cm.champion_id
+        """)
+        conn.execute("CREATE INDEX _idx_mp_champ ON _mp(champion_name)")
+        conn.commit()
+        row_count = conn.execute("SELECT COUNT(*) FROM _mp").fetchone()[0]
+        logger.info(f"  Materialized {row_count:,} rows into _mp")
+
+        self._analysis_conn = conn
+
+    def end_analysis_session(self):
+        """Close the analysis session connection and drop the _fm TEMP TABLE."""
+        if self._analysis_conn is not None:
+            self._analysis_conn.close()
+            self._analysis_conn = None
+
+    def _build_filter_cte(self, elo_filter: str,
+                          patch_filter: Optional[List[str]] = None) -> tuple:
+        """Return (cte_sql, params) for the filtered_matches CTE."""
+        filter_config = config.ELO_FILTERS.get(elo_filter)
+        if not filter_config:
+            raise ValueError(f"Unknown elo filter: {elo_filter}")
+
+        params: list = []
+
+        if elo_filter == 'diamond2_plus':
+            tier_clause = (
+                "(p.tier = 'DIAMOND' AND p.rank IN ('II', 'I'))"
+                " OR p.tier IN ('MASTER', 'GRANDMASTER', 'CHALLENGER')"
+            )
+        else:
+            tiers = filter_config['tiers']
+            placeholders = ','.join('?' * len(tiers))
+            tier_clause = f"p.tier IN ({placeholders})"
+            params.extend(tiers)
+
+        if patch_filter:
+            patch_conds = ' OR '.join(
+                ['mp.game_version LIKE ?' for _ in patch_filter]
+            )
+            patch_clause = f"AND ({patch_conds})"
+            params.extend([f"{p}.%" for p in patch_filter])
+        else:
+            patch_clause = ""
+
+        cte = f"""WITH filtered_matches AS (
+            SELECT DISTINCT mp.match_id
+            FROM match_participants mp
+            JOIN players p ON mp.puuid = p.puuid
+            WHERE ({tier_clause})
+            {patch_clause}
+        )"""
+        return cte, params
+
+    def get_summary_stats(self, elo_filter: str,
+                          patch_filter: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Return aggregated summary stats for the given filter (no full load)."""
+        conn = self._analysis_conn
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+                COUNT(DISTINCT mp.match_id),
+                COUNT(*),
+                COUNT(DISTINCT mp.puuid),
+                COUNT(DISTINCT mp.champion_name),
+                SUM(CASE WHEN mp.win THEN 1 ELSE 0 END),
+                SUM(CASE WHEN cm.mastery_points IS NOT NULL THEN 1 ELSE 0 END)
+            FROM match_participants mp
+            JOIN _fm fm ON mp.match_id = fm.match_id
+            LEFT JOIN champion_mastery cm
+                ON mp.puuid = cm.puuid AND mp.champion_id = cm.champion_id
+        """)
+        row = cur.fetchone()
+        total_matches         = row[0] or 0
+        total_participants    = row[1] or 0
+        total_unique_players  = row[2] or 0
+        total_unique_champions = row[3] or 0
+        total_wins            = row[4] or 0
+        participants_with_mastery = row[5] or 0
+
+        cur.execute("""
+            SELECT
+                CASE
+                    WHEN match_id LIKE 'NA%'  THEN 'NA'
+                    WHEN match_id LIKE 'EUW%' THEN 'EUW'
+                    WHEN match_id LIKE 'EU%'  THEN 'EUW'
+                    WHEN match_id LIKE 'KR%'  THEN 'KR'
+                    ELSE 'OTHER'
+                END AS region,
+                COUNT(*) AS cnt
+            FROM _fm
+            GROUP BY region
+        """)
+        region_balance = {r[0]: r[1] for r in cur.fetchall()}
+
+        return {
+            'total_matches': total_matches,
+            'total_participants': total_participants,
+            'total_unique_players': total_unique_players,
+            'total_unique_champions': total_unique_champions,
+            'total_wins': total_wins,
+            'participants_with_mastery': participants_with_mastery,
+            'region_balance': region_balance,
+        }
+
+    def get_mastery_points_list(self, elo_filter: str,
+                                patch_filter: Optional[List[str]] = None) -> List[int]:
+        """Return sorted mastery_points list for participants WITH mastery data."""
+        cur = self._analysis_conn.cursor()
+        cur.execute("SELECT mastery_points FROM _mp ORDER BY mastery_points")
+        return [r[0] for r in cur.fetchall()]
+
+    def get_mastery_distribution_extras(
+            self, elo_filter: str,
+            patch_filter: Optional[List[str]] = None) -> tuple:
+        """Return (bucket_counts, lane_bucket_counts) dicts for mastery distribution."""
+        bucket_case = """CASE
+            WHEN mastery_points < 10000  THEN 'low'
+            WHEN mastery_points < 100000 THEN 'medium'
+            ELSE 'high'
+        END"""
+
+        cur = self._analysis_conn.cursor()
+
+        cur.execute(f"""
+            SELECT {bucket_case} AS bucket, COUNT(*) AS cnt
+            FROM _mp
+            GROUP BY bucket
+        """)
+        bucket_counts: Dict[str, int] = {r[0]: r[1] for r in cur.fetchall()}
+
+        cur.execute(f"""
+            SELECT individual_position, {bucket_case} AS bucket, COUNT(*) AS cnt
+            FROM _mp
+            WHERE individual_position IS NOT NULL
+            GROUP BY individual_position, bucket
+        """)
+        lane_bucket_counts: Dict[str, Dict[str, int]] = {}
+        for r in cur.fetchall():
+            lane_bucket_counts.setdefault(r[0], {})[r[1]] = r[2]
+
+        return bucket_counts, lane_bucket_counts
+
+    def get_winrate_by_bucket(self, elo_filter: str,
+                              patch_filter: Optional[List[str]] = None) -> List[Dict]:
+        """Return [{'bucket', 'wins', 'games'}] rows — one per mastery bucket."""
+        cur = self._analysis_conn.cursor()
+        cur.execute("""
+            SELECT
+                CASE
+                    WHEN mastery_points < 10000  THEN 'low'
+                    WHEN mastery_points < 100000 THEN 'medium'
+                    ELSE 'high'
+                END AS bucket,
+                SUM(win) AS wins,
+                COUNT(*) AS games
+            FROM _mp
+            GROUP BY bucket
+        """)
+        return [{'bucket': r[0], 'wins': r[1], 'games': r[2]}
+                for r in cur.fetchall()]
+
+    def get_winrate_curve_data(self, elo_filter: str,
+                               patch_filter: Optional[List[str]] = None) -> List[Dict]:
+        """Return [{'interval_index', 'wins', 'games'}] — one per mastery interval."""
+        interval_case = """CASE
+            WHEN mastery_points < 1000    THEN 0
+            WHEN mastery_points < 2000    THEN 1
+            WHEN mastery_points < 5000    THEN 2
+            WHEN mastery_points < 10000   THEN 3
+            WHEN mastery_points < 20000   THEN 4
+            WHEN mastery_points < 50000   THEN 5
+            WHEN mastery_points < 100000  THEN 6
+            WHEN mastery_points < 200000  THEN 7
+            WHEN mastery_points < 500000  THEN 8
+            WHEN mastery_points < 1000000 THEN 9
+            ELSE 10
+        END"""
+        cur = self._analysis_conn.cursor()
+        cur.execute(f"""
+            SELECT
+                {interval_case} AS interval_idx,
+                SUM(win) AS wins,
+                COUNT(*) AS games
+            FROM _mp
+            GROUP BY interval_idx
+        """)
+        return [{'interval_index': r[0], 'wins': r[1], 'games': r[2]}
+                for r in cur.fetchall()]
+
+    def get_champion_stats_aggregated(
+            self, elo_filter: str,
+            patch_filter: Optional[List[str]] = None) -> tuple:
+        """Return (bucket_rows, lane_rows) for champion stats with standard buckets."""
+        bucket_case = """CASE
+            WHEN mastery_points < 10000  THEN 'low'
+            WHEN mastery_points < 100000 THEN 'medium'
+            ELSE 'high'
+        END"""
+        cur = self._analysis_conn.cursor()
+        cur.execute(f"""
+            SELECT
+                champion_name,
+                {bucket_case} AS bucket,
+                SUM(win) AS wins,
+                COUNT(*) AS games
+            FROM _mp
+            GROUP BY champion_name, bucket
+        """)
+        bucket_rows = [
+            {'champion_name': r[0], 'bucket': r[1], 'wins': r[2], 'games': r[3]}
+            for r in cur.fetchall()
+        ]
+
+        cur.execute("""
+            SELECT champion_name, individual_position, COUNT(*) AS cnt
+            FROM _mp
+            WHERE individual_position IS NOT NULL
+            GROUP BY champion_name, individual_position
+        """)
+        lane_rows = [
+            {'champion_name': r[0], 'lane': r[1], 'cnt': r[2]}
+            for r in cur.fetchall()
+        ]
+        return bucket_rows, lane_rows
+
+    def get_pabu_champion_stats_aggregated(
+            self, elo_filter: str,
+            patch_filter: Optional[List[str]] = None) -> tuple:
+        """Return (bucket_rows, lane_rows) with Pabu bucket thresholds (30k / 100k)."""
+        bucket_case = """CASE
+            WHEN mastery_points < 30000  THEN 'low'
+            WHEN mastery_points < 100000 THEN 'medium'
+            ELSE 'high'
+        END"""
+        cur = self._analysis_conn.cursor()
+        cur.execute(f"""
+            SELECT
+                champion_name,
+                {bucket_case} AS bucket,
+                SUM(win) AS wins,
+                COUNT(*) AS games
+            FROM _mp
+            GROUP BY champion_name, bucket
+        """)
+        bucket_rows = [
+            {'champion_name': r[0], 'bucket': r[1], 'wins': r[2], 'games': r[3]}
+            for r in cur.fetchall()
+        ]
+
+        cur.execute("""
+            SELECT champion_name, individual_position, COUNT(*) AS cnt
+            FROM _mp
+            WHERE individual_position IS NOT NULL
+            GROUP BY champion_name, individual_position
+        """)
+        lane_rows = [
+            {'champion_name': r[0], 'lane': r[1], 'cnt': r[2]}
+            for r in cur.fetchall()
+        ]
+        return bucket_rows, lane_rows
+
+    def get_mastery_curves_aggregated(
+            self, elo_filter: str,
+            patch_filter: Optional[List[str]] = None) -> tuple:
+        """Return (interval_rows, lane_rows) for per-champion mastery curves."""
+        interval_case = """CASE
+            WHEN mastery_points < 1000    THEN 0
+            WHEN mastery_points < 2000    THEN 1
+            WHEN mastery_points < 5000    THEN 2
+            WHEN mastery_points < 10000   THEN 3
+            WHEN mastery_points < 20000   THEN 4
+            WHEN mastery_points < 50000   THEN 5
+            WHEN mastery_points < 100000  THEN 6
+            WHEN mastery_points < 200000  THEN 7
+            WHEN mastery_points < 500000  THEN 8
+            WHEN mastery_points < 1000000 THEN 9
+            ELSE 10
+        END"""
+        cur = self._analysis_conn.cursor()
+        cur.execute(f"""
+            SELECT
+                champion_name,
+                {interval_case} AS interval_idx,
+                SUM(win) AS wins,
+                COUNT(*) AS games
+            FROM _mp
+            GROUP BY champion_name, interval_idx
+        """)
+        interval_rows = [
+            {'champion_name': r[0], 'interval_index': r[1],
+             'wins': r[2], 'games': r[3]}
+            for r in cur.fetchall()
+        ]
+
+        cur.execute("""
+            SELECT champion_name, individual_position, COUNT(*) AS cnt
+            FROM _mp
+            WHERE individual_position IS NOT NULL
+            GROUP BY champion_name, individual_position
+        """)
+        lane_rows = [
+            {'champion_name': r[0], 'lane': r[1], 'cnt': r[2]}
+            for r in cur.fetchall()
+        ]
+        return interval_rows, lane_rows
+
+    def iter_bias_mastery_data(self, elo_filter: str,
+                               patch_filter: Optional[List[str]] = None):
+        """Generator yielding (champion_name, mastery_points, win, lane) rows.
+
+        Streams data in chunks to avoid loading all rows into memory at once.
+        Used exclusively by compute_bias_champion_stats for exact bucketing.
+        """
+        cur = self._analysis_conn.cursor()
+        cur.execute("""
+            SELECT champion_name, mastery_points, win, individual_position
+            FROM _mp
+        """)
+        chunk = 10_000
+        while True:
+            rows = cur.fetchmany(chunk)
+            if not rows:
+                break
+            yield from rows
 
     def get_stats_summary(self) -> Dict[str, Any]:
         """Get summary statistics for verification"""

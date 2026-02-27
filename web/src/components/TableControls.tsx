@@ -1,5 +1,4 @@
 import Box from '@mui/material/Box'
-import Divider from '@mui/material/Divider'
 import FormControl from '@mui/material/FormControl'
 import InputLabel from '@mui/material/InputLabel'
 import Select from '@mui/material/Select'
@@ -17,11 +16,14 @@ const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
   { value: 'all_stats',        label: 'All Stats' },
 ]
 
-const PABU_VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
+const BETA_VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
   { value: 'pabu_easiest_to_learn', label: 'Pabu: Easiest to Learn β' },
   { value: 'pabu_best_to_master',   label: 'Pabu: Best to Master β' },
   { value: 'pabu_mastery_curve',    label: 'Pabu: Mastery Curve β' },
+  { value: 'slope_iterations',      label: 'Slope Iterations β' },
 ]
+
+const BETA_VIEW_VALUES: ViewMode[] = BETA_VIEW_OPTIONS.map(o => o.value)
 
 const LANE_OPTIONS = ['ALL', 'Top', 'Jungle', 'Mid', 'Bot', 'Support']
 
@@ -61,9 +63,9 @@ export function TableControls({
       }}
     >
       {/* View selector */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <ToggleButtonGroup
-          value={view}
+          value={BETA_VIEW_VALUES.includes(view) ? false : view}
           exclusive
           size="small"
           onChange={(_, val) => val && onViewChange(val as ViewMode)}
@@ -75,24 +77,26 @@ export function TableControls({
           ))}
         </ToggleButtonGroup>
 
-        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-
-        <ToggleButtonGroup
-          value={view}
-          exclusive
-          size="small"
-          onChange={(_, val) => val && onViewChange(val as ViewMode)}
-        >
-          {PABU_VIEW_OPTIONS.map(opt => (
-            <ToggleButton
-              key={opt.value}
-              value={opt.value}
-              sx={{ px: 1.5, fontStyle: 'italic', color: 'text.secondary' }}
-            >
-              {opt.label}
-            </ToggleButton>
-          ))}
-        </ToggleButtonGroup>
+        <FormControl size="small" sx={{ minWidth: 160 }}>
+          <Select
+            displayEmpty
+            value={BETA_VIEW_VALUES.includes(view) ? view : ''}
+            renderValue={val => {
+              if (!val) return <em style={{ fontStyle: 'italic', opacity: 0.7 }}>Beta Views</em>
+              return BETA_VIEW_OPTIONS.find(o => o.value === val)?.label ?? String(val)
+            }}
+            onChange={e => {
+              const val = e.target.value as ViewMode
+              if (val) onViewChange(val)
+            }}
+          >
+            {BETA_VIEW_OPTIONS.map(opt => (
+              <MenuItem key={opt.value} value={opt.value} sx={{ fontStyle: 'italic' }}>
+                {opt.label}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
       </Box>
 
       {/* Search */}

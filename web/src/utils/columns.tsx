@@ -198,4 +198,8 @@ export const VIEW_CONFIGS: Record<ViewMode, ViewConfig> = {
     isMasteryCurve: true,
     isPabu: true,
   },
+  slope_iterations: {
+    label: 'Slope Iterations',
+    defaultSort: { id: 'inflection_games', desc: false },
+  },
 }

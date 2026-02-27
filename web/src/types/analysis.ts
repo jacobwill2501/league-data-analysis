@@ -55,6 +55,18 @@ export interface AnalysisSummary {
   overall_win_rate: number
 }
 
+export interface SlopeIterationStat {
+  champion: string
+  most_common_lane: string | null
+  initial_wr: number | null
+  peak_wr: number | null
+  total_slope: number | null
+  inflection_mastery: number | null
+  inflection_games: number | null
+  slope_tier: string | null
+  valid_intervals: number | null
+}
+
 export interface AnalysisData {
   filter: string
   filter_description: string
@@ -75,6 +87,7 @@ export interface AnalysisData {
   pabu_games_to_threshold?: GameTo50Entry[]
   pabu_easiest_to_learn?: ChampionStat[]
   pabu_best_to_master?: ChampionStat[]
+  slope_iterations?: SlopeIterationStat[]
 }
 
 export type EloFilter = 'emerald_plus' | 'diamond_plus' | 'diamond2_plus'
@@ -87,3 +100,4 @@ export type ViewMode =
   | 'pabu_easiest_to_learn'
   | 'pabu_best_to_master'
   | 'pabu_mastery_curve'
+  | 'slope_iterations'
