@@ -61,9 +61,12 @@ export interface SlopeIterationStat {
   initial_wr: number | null
   peak_wr: number | null
   total_slope: number | null
+  early_slope: number | null
+  late_slope: number | null
   inflection_mastery: number | null
   inflection_games: number | null
   slope_tier: string | null
+  growth_type: string | null
   valid_intervals: number | null
 }
 

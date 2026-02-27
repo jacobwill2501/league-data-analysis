@@ -284,38 +284,69 @@ export function HelpModal({ open, onClose }: Props) {
 
         <Section title="Slope Iterations (Beta)">
           <P>
-            <strong>Slope Iterations</strong> answers: <em>"How long does it actually take before
-            you've mostly figured out this champion?"</em> It looks at how much your win rate
-            improves as you accumulate mastery points, rather than whether a champion is strong or
-            weak overall. Champions with a <strong>Flat Curve</strong> barely improve with
-            experience — they're immediately playable. Champions with a{' '}
-            <strong>Steep Curve</strong> need many games before you unlock their potential.{' '}
-            <strong>Games to Competency</strong> is the estimated number of games until 80% of the
-            possible win rate improvement is captured. Lower = easier to pick up.
+            <strong>Slope Iterations</strong> breaks down the mastery learning curve into three
+            distinct signals, mapping to the Fitts &amp; Posner three-stage skill acquisition model:
+          </P>
+          <P>
+            <strong>Pickup</strong> — How steep is the curve at the start? A{' '}
+            <strong>Very Hard Pickup</strong> champion punishes you heavily before you learn the
+            basics. An <strong>Easy Pickup</strong> champion performs near its ceiling from the first
+            few games.
+          </P>
+          <P>
+            <strong>Games to Competency</strong> — When does the win rate plateau? This is the
+            estimated number of games until you first reach near-peak performance (within 0.5 pp of
+            peak WR). Lower = faster to unlock the champion's potential.
+          </P>
+          <P>
+            <strong>Growth</strong> — Does the champion keep rewarding mastery past the plateau? A{' '}
+            <strong>Continual</strong> champion still shows meaningful win rate gains at 100k+
+            mastery. A <strong>Plateau</strong> champion levels off after you've learned the basics.
+          </P>
+          <Typography variant="subtitle2" gutterBottom fontWeight="bold" sx={{ mt: 1 }}>
+            Pickup Tier (Early Slope)
+          </Typography>
+          <TierTable
+            rows={[
+              { tier: 'Easy Pickup',     score: '< 2 pp' },
+              { tier: 'Mild Pickup',     score: '2–5 pp' },
+              { tier: 'Hard Pickup',     score: '5–8 pp' },
+              { tier: 'Very Hard Pickup', score: '≥ 8 pp' },
+            ]}
+            scoreLabel="Early Slope"
+          />
+          <P>
+            Early Slope = win rate gain across the first 3 mastery brackets (5k–50k points, roughly
+            the first 70 games). Drives the Pickup tier label.
+          </P>
+          <Typography variant="subtitle2" gutterBottom fontWeight="bold" sx={{ mt: 1 }}>
+            Growth Tier (Late Slope)
+          </Typography>
+          <TierTable
+            rows={[
+              { tier: 'Plateau',   score: '< 0.5 pp' },
+              { tier: 'Gradual',   score: '0.5–1.5 pp' },
+              { tier: 'Continual', score: '≥ 1.5 pp' },
+            ]}
+            scoreLabel="Late Slope"
+          />
+          <P>
+            Late Slope = win rate gain across the last 3 mastery brackets (~100k–500k points).
+            Drives the Growth tier label.
           </P>
           <Typography variant="subtitle2" gutterBottom fontWeight="bold" sx={{ mt: 1 }}>
             Technical Details
           </Typography>
           <P>
-            Win rate is measured across 11 mastery intervals (0–1k, 1k–2k, 2k–5k, 5k–10k, 20k,
-            50k, 100k, 200k, 500k, 1M, 1M+ points), filtered to intervals with ≥ 100 games.{' '}
-            <strong>Total Slope</strong> = <code>(peak_WR − initial_WR) × 100</code> in percentage
-            points. <strong>Inflection Mastery</strong> is found by iterating consecutive intervals
-            and locating where the cumulative WR gain reaches 80% of total slope (linearly
-            interpolated). <strong>Games to Competency</strong> = <code>inflection_mastery / 700</code>{' '}
-            (the approximate mastery points earned per game). This metric is balance-agnostic: a
-            champion that is strong at all skill levels will have a Flat Curve, not an artificially
-            easy one.
+            Win rates are smoothed using a <strong>sample-weighted 3-point moving average</strong>{' '}
+            before computing any metrics, so a single noisy bracket (e.g. a high-mastery interval
+            with only 200 games) doesn't skew the results. Intervals require ≥ 200 games and ≥ 5k
+            mastery to be included; the unbounded 1M+ bracket is excluded from slope computation.{' '}
+            <strong>Games to Competency</strong> = <code>inflection_mastery / 700</code> where
+            inflection mastery is the first bracket entry point where smoothed WR reaches within
+            0.5 pp of peak. This metric is balance-agnostic: a champion that is strong at all skill
+            levels will show Easy Pickup, not an artificially low one.
           </P>
-          <TierTable
-            rows={[
-              { tier: 'Flat Curve',     score: '< 2 pp' },
-              { tier: 'Gentle Slope',   score: '2–5 pp' },
-              { tier: 'Moderate Slope', score: '5–8 pp' },
-              { tier: 'Steep Curve',    score: '> 8 pp' },
-            ]}
-            scoreLabel="Total Slope"
-          />
           <P>
             <em>This view is experimental and may change in future releases.</em>
           </P>

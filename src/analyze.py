@@ -73,17 +73,44 @@ SLOPE_MIN_GAMES   = 200    # Stricter sample threshold for slope vs. 100 for vis
 SLOPE_PLATEAU_THRESHOLD = 0.5  # pp — WR within this of peak counts as "plateaued"
 
 
-def _slope_tier(total_slope):
-    """Assign a tier label based on total WR slope in percentage points"""
-    if total_slope is None:
+def _slope_tier(early_slope):
+    """Assign a tier label based on early WR slope (pickup difficulty) in percentage points."""
+    if early_slope is None:
         return None
-    if total_slope < 2:
-        return 'Flat Curve'
-    if total_slope < 5:
-        return 'Gentle Slope'
-    if total_slope < 8:
-        return 'Moderate Slope'
-    return 'Steep Curve'
+    if early_slope < 2:
+        return 'Easy Pickup'
+    if early_slope < 5:
+        return 'Mild Pickup'
+    if early_slope < 8:
+        return 'Hard Pickup'
+    return 'Very Hard Pickup'
+
+
+def _growth_type(late_slope: float | None) -> str | None:
+    """Classify late-mastery growth from last-3-interval smoothed slope."""
+    if late_slope is None:
+        return None
+    if late_slope < 0.5:
+        return 'Plateau'
+    if late_slope < 1.5:
+        return 'Gradual'
+    return 'Continual'
+
+
+def _smooth_curve(intervals: list) -> list:
+    """Games-weighted 3-point moving average over an interval list.
+
+    Downweights noisy low-sample brackets (e.g. high-mastery endpoints)
+    relative to their denser neighbors. Returns smoothed win_rate values
+    at the same indices as the input list.
+    """
+    n = len(intervals)
+    result = []
+    for i in range(n):
+        window = intervals[max(0, i - 1):i + 2]
+        total_games = sum(iv['games'] for iv in window)
+        result.append(sum(iv['win_rate'] * iv['games'] for iv in window) / total_games)
+    return result
 
 
 class MasteryAnalyzer:
@@ -597,26 +624,46 @@ class MasteryAnalyzer:
                     'initial_wr': None,
                     'peak_wr': None,
                     'total_slope': None,
+                    'early_slope': None,
+                    'late_slope': None,
                     'inflection_mastery': None,
                     'inflection_games': None,
                     'slope_tier': None,
+                    'growth_type': None,
                     'valid_intervals': valid_intervals,
                 })
                 continue
 
+            # Raw values kept for display (Starting WR / Peak WR columns)
             initial_wr = slope_ivs[0]['win_rate']
             peak_wr = max(iv['win_rate'] for iv in slope_ivs)
-            total_slope = (peak_wr - initial_wr) * 100  # percentage points, unrounded
+
+            # All metrics derived from smoothed values
+            smoothed = _smooth_curve(slope_ivs)
+
+            s_initial = smoothed[0]
+            s_peak    = max(smoothed)
+            total_slope = (s_peak - s_initial) * 100
+
+            # Early slope: gain across first 3 intervals (Cognitive phase, ~5k–50k mastery)
+            early_end   = min(3, len(smoothed) - 1)
+            early_slope = (smoothed[early_end] - smoothed[0]) * 100
+
+            # Late slope: gain across last 3 intervals (Autonomous phase, ~100k–500k mastery)
+            # Only computed when there are enough intervals for early and late not to overlap.
+            late_slope = None
+            if len(smoothed) >= 5:
+                late_slope = (smoothed[-1] - smoothed[-3]) * 100
 
             inflection_mastery = None
-            inflection_games = None
+            inflection_games   = None
 
             if total_slope > 0:
-                near_peak_wr = peak_wr - (SLOPE_PLATEAU_THRESHOLD / 100)
-                for iv in slope_ivs:
-                    if iv['win_rate'] >= near_peak_wr:
-                        inflection_mastery = iv['min']  # entry point to the plateau bucket
-                        inflection_games = round(inflection_mastery / MASTERY_PER_GAME)
+                near_peak_swr = s_peak - (SLOPE_PLATEAU_THRESHOLD / 100)
+                for iv, swr in zip(slope_ivs, smoothed):
+                    if swr >= near_peak_swr:
+                        inflection_mastery = iv['min']
+                        inflection_games   = round(inflection_mastery / MASTERY_PER_GAME)
                         break
 
             results.append({
@@ -625,17 +672,20 @@ class MasteryAnalyzer:
                 'initial_wr': round(initial_wr, 4),
                 'peak_wr': round(peak_wr, 4),
                 'total_slope': round(total_slope, 2),
+                'early_slope': round(early_slope, 2),
+                'late_slope': round(late_slope, 2) if late_slope is not None else None,
                 'inflection_mastery': inflection_mastery,
                 'inflection_games': inflection_games,
-                'slope_tier': _slope_tier(total_slope),
+                'slope_tier': _slope_tier(early_slope),
+                'growth_type': _growth_type(late_slope),
                 'valid_intervals': valid_intervals,
             })
 
         slope_tier_order = {
-            'Flat Curve': 0,
-            'Gentle Slope': 1,
-            'Moderate Slope': 2,
-            'Steep Curve': 3,
+            'Easy Pickup': 0,
+            'Mild Pickup': 1,
+            'Hard Pickup': 2,
+            'Very Hard Pickup': 3,
         }
 
         def sort_key(entry):

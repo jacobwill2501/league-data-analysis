@@ -121,6 +121,58 @@ For each filter, the analyzer:
 
 Results are saved as JSON files per elo filter.
 
+## Slope Analysis (Slope Iterations View)
+
+`compute_slope_iterations()` in `analyze.py` produces per-champion learning curve metrics, modelling the Fitts & Posner three-stage skill acquisition model:
+
+### Three Signals
+
+| Signal | Field | Phase |
+|---|---|---|
+| Pickup difficulty | `early_slope` / `slope_tier` | Cognitive (5k–50k mastery) |
+| Games to competency | `inflection_games` | Associative boundary |
+| Continual growth | `late_slope` / `growth_type` | Autonomous (100k–500k mastery) |
+
+### Curve Smoothing
+
+Before computing any metric, raw interval win rates are smoothed using a **games-weighted 3-point moving average**. Each smoothed point is the weighted average of itself and its immediate neighbors, weighted by each interval's game count. This prevents single noisy brackets (e.g. a high-mastery interval with only 200 games) from corrupting metrics. The result has the same length as the input; endpoints naturally use a 2-point average.
+
+### Metric Computation
+
+- **Early slope** — smoothed WR gain across the first 3 intervals (indices 0→3, covering 5k–50k mastery, approximately the first 70 games).
+- **Late slope** — smoothed WR gain across the last 3 intervals (~100k–500k mastery). Only computed when there are ≥ 5 intervals so early and late don't overlap.
+- **Total slope** — smoothed peak WR minus smoothed initial WR (percentage points).
+- **Inflection mastery** — first interval entry point where smoothed WR ≥ smoothed peak − 0.5 pp.
+- **Games to competency** — `inflection_mastery / 700` (approximate mastery per game).
+
+`initial_wr` and `peak_wr` are kept as raw (unsmoothed) values since they are display fields shown in the table.
+
+### Tier Labels
+
+**Pickup tier** (based on `early_slope`):
+| Label | Threshold |
+|---|---|
+| Easy Pickup | < 2 pp |
+| Mild Pickup | 2–5 pp |
+| Hard Pickup | 5–8 pp |
+| Very Hard Pickup | ≥ 8 pp |
+
+**Growth type** (based on `late_slope`):
+| Label | Threshold |
+|---|---|
+| Plateau | < 0.5 pp |
+| Gradual | 0.5–1.5 pp |
+| Continual | ≥ 1.5 pp |
+
+### Interval Filters
+
+Intervals must satisfy:
+- `min >= 5000` (skip 0–1k and 1k–5k bands, which are dominated by selection bias)
+- `games >= 200` (stricter threshold than the 100-game visualization threshold)
+- `max is not None` (exclude the unbounded 1M+ bracket from slope computation)
+
+At least 3 qualifying intervals are required to produce any metrics.
+
 ## Key Limitations
 
 1. **Mastery is current, not historical.** The Champion-Mastery-v4 endpoint returns a player's mastery at the time of the API call, not at the time the match was played. A player who had 50k mastery during a match but has since climbed to 200k will be recorded at 200k. This biases mastery values upward for older matches and blurs the relationship somewhat. Restricting to recent patches (the `--patches current` filter) mitigates this by narrowing the time gap.

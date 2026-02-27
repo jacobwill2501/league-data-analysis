@@ -19,6 +19,7 @@ import Paper from '@mui/material/Paper'
 import Chip from '@mui/material/Chip'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
+import Tooltip from '@mui/material/Tooltip'
 import { LineChart, Line, ReferenceLine } from 'recharts'
 import type { MasteryChampionCurve, SlopeIterationStat } from '../types/analysis'
 import { ChampionIcon } from './ChampionIcon'
@@ -27,10 +28,10 @@ import { fmtLane, fmtPct, fmtThreshold } from '../utils/format'
 type ChipColor = 'success' | 'warning' | 'error' | 'default' | 'info'
 
 const SLOPE_TIER_COLORS: Record<string, string> = {
-  'Flat Curve':     '#66BB6A',
-  'Gentle Slope':   '#FFA726',
-  'Moderate Slope': '#EF6C00',
-  'Steep Curve':    '#EF5350',
+  'Easy Pickup':     '#66BB6A',
+  'Mild Pickup':     '#FFA726',
+  'Hard Pickup':     '#EF6C00',
+  'Very Hard Pickup': '#EF5350',
 }
 
 function SlopeSparkline({
@@ -74,10 +75,16 @@ function SlopeSparkline({
 }
 
 const SLOPE_TIER_COLOR: Record<string, ChipColor> = {
-  'Flat Curve':     'success',
-  'Gentle Slope':   'info',
-  'Moderate Slope': 'warning',
-  'Steep Curve':    'error',
+  'Easy Pickup':     'success',
+  'Mild Pickup':     'info',
+  'Hard Pickup':     'warning',
+  'Very Hard Pickup': 'error',
+}
+
+const GROWTH_TYPE_COLOR: Record<string, ChipColor> = {
+  'Plateau':   'default',
+  'Gradual':   'info',
+  'Continual': 'success',
 }
 
 function fmtSlope(val: number | null): string {
@@ -138,8 +145,15 @@ export function SlopeIterationsView({ data, masteryChampionCurves }: Props) {
     },
     {
       id: 'slope_tier',
-      header: 'Slope Tier',
+      header: 'Pickup',
       accessorKey: 'slope_tier',
+      enableSorting: true,
+      cell: info => info.getValue<string | null>() ?? '—',
+    },
+    {
+      id: 'growth_type',
+      header: 'Growth',
+      accessorKey: 'growth_type',
       enableSorting: true,
       cell: info => info.getValue<string | null>() ?? '—',
     },
@@ -155,6 +169,22 @@ export function SlopeIterationsView({ data, masteryChampionCurves }: Props) {
             masteryChampionCurves={masteryChampionCurves}
           />
         ) : null,
+    },
+    {
+      id: 'early_slope',
+      header: 'Early Slope',
+      accessorKey: 'early_slope',
+      enableSorting: true,
+      sortingFn: nullLastSortingFn,
+      cell: info => fmtSlope(info.getValue<number | null>()),
+    },
+    {
+      id: 'late_slope',
+      header: 'Late Slope',
+      accessorKey: 'late_slope',
+      enableSorting: true,
+      sortingFn: nullLastSortingFn,
+      cell: info => fmtSlope(info.getValue<number | null>()),
     },
     {
       id: 'total_slope',
@@ -216,6 +246,20 @@ export function SlopeIterationsView({ data, masteryChampionCurves }: Props) {
     getSortedRowModel: getSortedRowModel(),
   })
 
+  const COLUMN_TOOLTIPS: Record<string, string> = {
+    slope_tier:         'Early-mastery difficulty. Based on win rate gain in the first 3 mastery brackets (5k–50k points, ~0–70 games). Higher = more punishing to play before you\'ve learned the champion.',
+    growth_type:        'Whether the champion keeps improving at high mastery. Plateau = WR levels off after competency. Gradual = slow continued gains. Continual = still growing significantly at 100k+ mastery.',
+    curve:              'Win rate progression across mastery brackets. Color matches Pickup tier. Dashed line = 50% WR.',
+    early_slope:        'Win rate gain across the first 3 mastery brackets (5k–50k). Positive = champion gets better with early practice. Drives the Pickup tier label.',
+    late_slope:         'Win rate gain across the last 3 mastery brackets (~100k–500k). Positive = champion rewards deep mastery investment. Drives the Growth tier label.',
+    total_slope:        'Total win rate gain from starting mastery to peak mastery (percentage points). Smoothed to reduce noise from low-sample brackets.',
+    inflection_games:   'Estimated games until you first reach near-peak performance (within 0.5 pp of peak WR). Based on mastery bracket entry points ÷ 700 mastery/game.',
+    inflection_mastery: 'The mastery point threshold where near-peak win rate is first reached. Games to Competency = this value ÷ 700.',
+    initial_wr:         'Win rate in the 5k–10k mastery bracket — your baseline performance with minimal experience.',
+    peak_wr:            'Highest observed win rate across all mastery brackets for this champion.',
+    valid_intervals:    'Number of mastery brackets with sufficient data (≥ 200 games) used in this analysis.',
+  }
+
   return (
     <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 0 }}>
       <Table size="small" stickyHeader>
@@ -223,25 +267,35 @@ export function SlopeIterationsView({ data, masteryChampionCurves }: Props) {
           {table.getHeaderGroups().map(hg => (
             <TableRow key={hg.id}>
               <TableCell sx={{ width: 48, color: 'text.secondary', fontWeight: 600 }}>#</TableCell>
-              {hg.headers.map(header => (
-                <TableCell
-                  key={header.id}
-                  sortDirection={header.column.getIsSorted() || false}
-                  sx={{ whiteSpace: 'nowrap', fontWeight: 600 }}
-                >
-                  {header.column.getCanSort() ? (
-                    <TableSortLabel
-                      active={!!header.column.getIsSorted()}
-                      direction={header.column.getIsSorted() || 'asc'}
-                      onClick={header.column.getToggleSortingHandler()}
-                    >
-                      {flexRender(header.column.columnDef.header, header.getContext())}
-                    </TableSortLabel>
-                  ) : (
-                    flexRender(header.column.columnDef.header, header.getContext())
-                  )}
-                </TableCell>
-              ))}
+              {hg.headers.map(header => {
+                const tooltip = COLUMN_TOOLTIPS[header.id]
+                const label = flexRender(header.column.columnDef.header, header.getContext())
+                const wrappedLabel = tooltip ? (
+                  <Tooltip title={tooltip} placement="top" arrow>
+                    <span>{label}</span>
+                  </Tooltip>
+                ) : label
+
+                return (
+                  <TableCell
+                    key={header.id}
+                    sortDirection={header.column.getIsSorted() || false}
+                    sx={{ whiteSpace: 'nowrap', fontWeight: 600 }}
+                  >
+                    {header.column.getCanSort() ? (
+                      <TableSortLabel
+                        active={!!header.column.getIsSorted()}
+                        direction={header.column.getIsSorted() || 'asc'}
+                        onClick={header.column.getToggleSortingHandler()}
+                      >
+                        {wrappedLabel}
+                      </TableSortLabel>
+                    ) : (
+                      wrappedLabel
+                    )}
+                  </TableCell>
+                )
+              })}
             </TableRow>
           ))}
         </TableHead>
@@ -291,7 +345,24 @@ export function SlopeIterationsView({ data, masteryChampionCurves }: Props) {
                   )
                 }
 
-                if (colId === 'total_slope') {
+                if (colId === 'growth_type') {
+                  const gt = rawValue as string | null
+                  return (
+                    <TableCell key={cell.id} sx={{ whiteSpace: 'nowrap' }}>
+                      {gt ? (
+                        <Chip
+                          label={gt}
+                          color={GROWTH_TYPE_COLOR[gt] ?? 'default'}
+                          size="small"
+                          variant="outlined"
+                          sx={{ fontSize: 11 }}
+                        />
+                      ) : <>—</>}
+                    </TableCell>
+                  )
+                }
+
+                if (colId === 'total_slope' || colId === 'early_slope' || colId === 'late_slope') {
                   return (
                     <TableCell key={cell.id} sx={{ whiteSpace: 'nowrap' }}>
                       <Typography
