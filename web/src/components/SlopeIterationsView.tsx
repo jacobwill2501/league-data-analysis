@@ -20,7 +20,7 @@ import Chip from '@mui/material/Chip'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Tooltip from '@mui/material/Tooltip'
-import { LineChart, Line, ReferenceLine } from 'recharts'
+import { LineChart, Line, ReferenceLine, YAxis } from 'recharts'
 import type { MasteryChampionCurve, SlopeIterationStat } from '../types/analysis'
 import { ChampionIcon } from './ChampionIcon'
 import { fmtLane, fmtPct, fmtThreshold } from '../utils/format'
@@ -46,11 +46,25 @@ function SlopeSparkline({
   const curve = masteryChampionCurves[champion]
   if (!curve) return <span style={{ color: '#666' }}>—</span>
 
-  const chartData = curve.intervals
-    .filter(i => i.games >= 30)
+  const rawData = curve.intervals
+    .filter(i => i.games >= 30 && i.min >= 5000)
     .map((i, idx) => ({ idx, wr: +(i.win_rate * 100).toFixed(1) }))
 
-  if (chartData.length < 2) return <span style={{ color: '#666' }}>—</span>
+  if (rawData.length < 2) return <span style={{ color: '#666' }}>—</span>
+
+  const W = 3
+  const chartData = rawData.map((d, i, arr) => {
+    const lo = Math.max(0, i - Math.floor(W / 2))
+    const hi = Math.min(arr.length - 1, i + Math.floor(W / 2))
+    const avg = arr.slice(lo, hi + 1).reduce((s, x) => s + x.wr, 0) / (hi - lo + 1)
+    return { ...d, wr: +avg.toFixed(2) }
+  })
+
+  const wrs = chartData.map(d => d.wr)
+  const minWr = Math.min(...wrs)
+  const maxWr = Math.max(...wrs)
+  const pad = Math.max(0.5, (maxWr - minWr) * 0.2)
+  const domain: [number, number] = [+(minWr - pad).toFixed(1), +(maxWr + pad).toFixed(1)]
 
   const lineColor = SLOPE_TIER_COLORS[slopeTier ?? ''] ?? '#90CAF9'
 
@@ -61,6 +75,7 @@ function SlopeSparkline({
       data={chartData}
       margin={{ top: 6, right: 4, bottom: 6, left: 4 }}
     >
+      <YAxis domain={domain} hide />
       <ReferenceLine y={50} stroke="#555" strokeDasharray="2 2" strokeWidth={1} />
       <Line
         type="monotone"
@@ -249,7 +264,7 @@ export function SlopeIterationsView({ data, masteryChampionCurves }: Props) {
   const COLUMN_TOOLTIPS: Record<string, string> = {
     slope_tier:         'Early-mastery difficulty. Based on win rate gain in the first 3 mastery brackets (5k–50k points, ~0–70 games). Higher = more punishing to play before you\'ve learned the champion.',
     growth_type:        'Whether the champion keeps improving at high mastery. Plateau = WR levels off after competency. Gradual = slow continued gains. Continual = still growing significantly at 100k+ mastery.',
-    curve:              'Win rate progression across mastery brackets. Color matches Pickup tier. Dashed line = 50% WR.',
+    curve:              'Win rate progression across mastery brackets (5k+ mastery only — matches the range used for all slope metrics). Color matches Pickup tier. Dashed line = 50% WR.',
     early_slope:        'Win rate gain across the first 3 mastery brackets (5k–50k). Positive = champion gets better with early practice. Drives the Pickup tier label.',
     late_slope:         'Win rate gain across the last 3 mastery brackets (~100k–500k). Positive = champion rewards deep mastery investment. Drives the Growth tier label.',
     total_slope:        'Total win rate gain from starting mastery to peak mastery (percentage points). Smoothed to reduce noise from low-sample brackets.',
