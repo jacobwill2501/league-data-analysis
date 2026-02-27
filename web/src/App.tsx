@@ -48,7 +48,14 @@ export function App() {
   )
 
   const [elo, setElo] = useState<EloFilter>('emerald_plus')
-  const [view, setView] = useState<ViewMode>('easiest_to_learn')
+  const [view, setView] = useState<ViewMode>(() => {
+    const param = new URLSearchParams(window.location.search).get('view')
+    const valid: ViewMode[] = [
+      'easiest_to_learn', 'best_to_master', 'mastery_curve', 'all_stats',
+      'pabu_easiest_to_learn', 'pabu_best_to_master', 'pabu_mastery_curve', 'slope_iterations',
+    ]
+    return valid.includes(param as ViewMode) ? (param as ViewMode) : 'easiest_to_learn'
+  })
   const [search, setSearch] = useState('')
   const [lane, setLane] = useState('ALL')
 
@@ -100,6 +107,13 @@ export function App() {
     return rows
   }, [data, view, search, lane])
 
+  const handleViewChange = (newView: ViewMode) => {
+    setView(newView)
+    const params = new URLSearchParams(window.location.search)
+    params.set('view', newView)
+    window.history.replaceState(null, '', `?${params.toString()}`)
+  }
+
   const isMasteryCurve = view === 'mastery_curve' || view === 'pabu_mastery_curve'
   const isSlopeView = view === 'slope_iterations'
   const rowCount = isMasteryCurve ? 0 : isSlopeView ? filteredSlope.length : filteredChampions.length
@@ -120,7 +134,7 @@ export function App() {
 
         <TableControls
           view={view}
-          onViewChange={setView}
+          onViewChange={handleViewChange}
           search={search}
           onSearchChange={setSearch}
           lane={lane}
