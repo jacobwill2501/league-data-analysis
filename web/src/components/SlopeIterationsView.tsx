@@ -73,7 +73,10 @@ function SlopeSparkline({
   const minWr = Math.min(...wrs)
   const maxWr = Math.max(...wrs)
   const pad = Math.max(0.5, (maxWr - minWr) * 0.2)
-  const domain: [number, number] = [+(minWr - pad).toFixed(1), +(maxWr + pad).toFixed(1)]
+  const domain: [number, number] = [
+    +Math.min(minWr - pad, 50).toFixed(1),
+    +Math.max(maxWr + pad, 50).toFixed(1),
+  ]
 
   const lineColor = SLOPE_TIER_COLORS[slopeTier ?? ''] ?? '#90CAF9'
 
