@@ -12,6 +12,7 @@ import type { ViewMode } from '../types/analysis'
 const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
   { value: 'easiest_to_learn', label: 'Easiest to Learn' },
   { value: 'best_to_master',   label: 'Best to Master' },
+  { value: 'slope_iterations', label: 'Slope Iterations' },
   { value: 'mastery_curve',    label: 'Mastery Curve' },
   { value: 'all_stats',        label: 'All Stats' },
 ]
@@ -20,7 +21,6 @@ const BETA_VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
   { value: 'pabu_easiest_to_learn', label: 'Pabu: Easiest to Learn β' },
   { value: 'pabu_best_to_master',   label: 'Pabu: Best to Master β' },
   { value: 'pabu_mastery_curve',    label: 'Pabu: Mastery Curve β' },
-  { value: 'slope_iterations',      label: 'Slope Iterations β' },
 ]
 
 const BETA_VIEW_VALUES: ViewMode[] = BETA_VIEW_OPTIONS.map(o => o.value)

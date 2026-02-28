@@ -128,7 +128,7 @@ Dev key: 20/s, 100/2min for all endpoints.
 
 2. **Match deduplication at collection time.** `match_exists()` check before API call — critical since many players share matches.
 
-3. **`individualPosition` for lane assignment.** The `lane` and `role` fields in match-v5 are unreliable. `individualPosition` returns: TOP, JUNGLE, MIDDLE, BOTTOM, UTILITY.
+3. **`teamPosition` as primary lane field, `individualPosition` as fallback.** The `lane` and `role` fields in match-v5 are unreliable. `teamPosition` is Riot's team-context-aware algorithm; `individualPosition` is the participant-level version. Both are captured in `match_participants`. The `_mp` analysis temp table resolves the canonical lane via `COALESCE(NULLIF(team_position,''), NULLIF(individual_position,''))`, so all downstream analysis automatically uses the best available field. Both APIs return `""` (not NULL) when unresolvable, hence the `NULLIF`.
 
 4. **Mastery is a point-in-time snapshot.** Current mastery, not historical. Known limitation shared with original study. Restricting to `--patches current` mitigates.
 
@@ -206,6 +206,9 @@ Per elo filter, `analyze.py` produces JSON with:
 - **best_to_master** — champions sorted by high_ratio descending
 - **slope_iterations** — per-champion learning curve signals: `early_slope`, `early_slope_ci`, `late_slope`, `total_slope`, `slope_tier`, `growth_type`, `inflection_mastery`, `inflection_games`, `initial_wr`, `peak_wr`, `valid_intervals`
 - **mastery_curves** — per-champion interval lists, each with `win_rate`, `games`, `ci_lower`, `ci_upper`
+- **champion_stats_by_lane** — nested `champion → lane → stat` dict (same shape as `champion_stats` entries but without `most_common_lane`; only lanes with ≥ 100 medium-bucket games emitted)
+- **mastery_curves_by_lane** — nested `champion → lane → {intervals}` dict; mastery axis is total champion mastery (Riot API has no per-lane mastery)
+- **slope_iterations_by_lane** — same as `slope_iterations` but one entry per `(champion, lane)` pair, with an added `lane` field
 
 ### Verification Checks (run during analysis)
 

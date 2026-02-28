@@ -97,6 +97,7 @@ def process_match(api: RiotAPIClient, db: Database, region: str, match_id: str) 
             'lane': p.get('lane'),
             'role': p.get('role'),
             'individual_position': p.get('individualPosition'),
+            'team_position': p.get('teamPosition'),
             'game_duration': info['gameDuration'],
             'game_version': info['gameVersion'],
             'queue_id': info['queueId'],

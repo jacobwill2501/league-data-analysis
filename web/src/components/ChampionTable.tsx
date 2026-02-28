@@ -18,6 +18,7 @@ import Paper from '@mui/material/Paper'
 import Chip from '@mui/material/Chip'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
+import Tooltip from '@mui/material/Tooltip'
 import type { ChampionStat, ViewMode } from '../types/analysis'
 import { ChampionIcon } from './ChampionIcon'
 import { fmtLane } from '../utils/format'
@@ -101,7 +102,7 @@ interface TableProps<T extends object> {
  * - formattedNode: the React node returned by flexRender (already formatted string
  *   like "48.57%"). Never call String() on this — it may be a React element.
  */
-function renderCell(colId: string, rawValue: unknown, formattedNode: React.ReactNode) {
+function renderCell(colId: string, rawValue: unknown, formattedNode: React.ReactNode, row?: ChampionStat) {
   // Champion (icon + name) — rawValue is the champion name string
   if (colId === 'champion') {
     return <ChampionCell name={rawValue as string} />
@@ -121,11 +122,27 @@ function renderCell(colId: string, rawValue: unknown, formattedNode: React.React
       : pct < 48   ? 'error.main'
       : pct > 52   ? 'success.main'
       : 'text.primary'
-    return (
+
+    const ciLower = colId === 'low_wr'    ? row?.low_wr_ci_lower
+                  : colId === 'medium_wr' ? row?.medium_wr_ci_lower
+                  : colId === 'high_wr'   ? row?.high_wr_ci_lower
+                  : null
+    const ciUpper = colId === 'low_wr'    ? row?.low_wr_ci_upper
+                  : colId === 'medium_wr' ? row?.medium_wr_ci_upper
+                  : colId === 'high_wr'   ? row?.high_wr_ci_upper
+                  : null
+    const ciTitle = ciLower != null && ciUpper != null
+      ? `95% CI: [${(ciLower * 100).toFixed(1)}%, ${(ciUpper * 100).toFixed(1)}%]`
+      : ''
+
+    const inner = (
       <Typography variant="body2" component="span" color={color} fontFamily="monospace">
         {formattedNode}
       </Typography>
     )
+    return ciTitle
+      ? <Tooltip title={ciTitle} arrow placement="top"><span>{inner}</span></Tooltip>
+      : inner
   }
 
   // Delta cells — colour from sign of raw value
@@ -240,6 +257,7 @@ function SortableTable<T extends object>({ data, columns, view }: TableProps<T>)
                     cell.getValue(),
                     // formatted string from the column's cell function
                     flexRender(cell.column.columnDef.cell, cell.getContext()),
+                    row.original as ChampionStat,
                   )}
                 </TableCell>
               ))}

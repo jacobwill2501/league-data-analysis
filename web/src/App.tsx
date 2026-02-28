@@ -75,21 +75,55 @@ export function App() {
     }
   }, [data, view])
 
+  // Expanded per-lane rows from champion_stats_by_lane — one entry per (champion, lane).
+  // Used when a specific lane is selected so flex picks appear in every lane they're played in.
+  const laneRows = useMemo((): ChampionStat[] => {
+    if (!data?.championStatsByLane) return []
+    return Object.entries(data.championStatsByLane).flatMap(([champion, laneMap]) =>
+      Object.entries(laneMap).map(([laneKey, stats]) => ({
+        champion,
+        most_common_lane: laneKey,
+        ...stats,
+        // Fields not computed per-lane — shown as "—" in table
+        games_to_50_status: null,
+        starting_winrate: null,
+        mastery_threshold: null,
+        bias_status: null,
+        estimated_games: null,
+      } as ChampionStat))
+    )
+  }, [data])
+
   const filteredChampions = useMemo((): ChampionStat[] => {
     if (view === 'mastery_curve' || view === 'pabu_mastery_curve' || view === 'slope_iterations') return []
-    let rows = sourceRows
 
+    // When a specific lane is selected, use per-lane rows so flex picks appear in every
+    // lane they're played in (not just their most_common_lane).
+    if (lane !== 'ALL' && laneRows.length > 0) {
+      let rows = laneRows.filter(r => getLaneDisplay(r.most_common_lane) === lane)
+      if (search.trim()) {
+        const q = search.trim().toLowerCase()
+        rows = rows.filter(r => r.champion.toLowerCase().includes(q))
+      }
+      // Sort appropriately since per-lane rows aren't pre-sorted by the backend
+      if (view === 'easiest_to_learn' || view === 'pabu_easiest_to_learn') {
+        rows = [...rows].sort((a, b) => (b.learning_score ?? -Infinity) - (a.learning_score ?? -Infinity))
+      } else if (view === 'best_to_master' || view === 'pabu_best_to_master') {
+        rows = [...rows].sort((a, b) => (b.mastery_score ?? -Infinity) - (a.mastery_score ?? -Infinity))
+      } else {
+        rows = [...rows].sort((a, b) => a.champion.localeCompare(b.champion))
+      }
+      return rows
+    }
+
+    // ALL lanes: existing behavior (pooled, one row per champion)
+    let rows = sourceRows
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       rows = rows.filter(r => r.champion.toLowerCase().includes(q))
     }
-
-    if (lane !== 'ALL') {
-      rows = rows.filter(r => getLaneDisplay(r.most_common_lane) === lane)
-    }
-
     return rows
-  }, [sourceRows, search, lane, view])
+  }, [sourceRows, laneRows, search, lane, view])
 
   const filteredSlope = useMemo((): SlopeIterationStat[] => {
     if (view !== 'slope_iterations' || !data) return []
@@ -112,6 +146,16 @@ export function App() {
     const params = new URLSearchParams(window.location.search)
     params.set('view', newView)
     window.history.replaceState(null, '', `?${params.toString()}`)
+  }
+
+  const handleNavigateToMasteryCurve = (champion: string, lane: string | null) => {
+    const params = new URLSearchParams(window.location.search)
+    params.set('view', 'mastery_curve')
+    params.set('champion', champion)
+    if (lane) params.set('lane', lane)
+    else params.delete('lane')
+    window.history.replaceState(null, '', `?${params.toString()}`)
+    setView('mastery_curve')
   }
 
   const isMasteryCurve = view === 'mastery_curve' || view === 'pabu_mastery_curve'
@@ -163,10 +207,17 @@ export function App() {
 
           {!loading && !error && data && (
             isSlopeView
-              ? <SlopeIterationsView data={filteredSlope} masteryChampionCurves={data.masteryChampionCurves} />
+              ? <SlopeIterationsView
+                  data={filteredSlope}
+                  masteryChampionCurves={data.masteryChampionCurves}
+                  dataByLane={data.slopeIterationsByLane}
+                  masteryChampionCurvesByLane={data.masteryChampionCurvesByLane}
+                  onChampionClick={handleNavigateToMasteryCurve}
+                />
               : isMasteryCurve
                 ? <MasteryCurveView
                     masteryChampionCurves={data.masteryChampionCurves}
+                    masteryChampionCurvesByLane={data.masteryChampionCurvesByLane}
                     pabuThreshold={view === 'pabu_mastery_curve' ? data.overallWinRate : undefined}
                   />
                 : <ChampionTable

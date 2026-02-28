@@ -17,6 +17,13 @@ export interface ChampionStat {
   learning_tier: string | null
   mastery_tier: string | null
   most_common_lane: string | null
+  // Bucket-level 95% Wilson CI
+  low_wr_ci_lower?: number | null
+  low_wr_ci_upper?: number | null
+  medium_wr_ci_lower?: number | null
+  medium_wr_ci_upper?: number | null
+  high_wr_ci_lower?: number | null
+  high_wr_ci_upper?: number | null
   // Bias fields (present in bias_champion_stats rows)
   bias_status?: string | null
   mastery_threshold?: number | null
@@ -34,6 +41,40 @@ export interface GameTo50Entry {
   estimated_games: number | null
   starting_winrate: number | null
   status: string
+}
+
+/** Per-lane champion stat — same shape as ChampionStat but without champion/most_common_lane. */
+export interface ChampionLaneStat {
+  low_wr: number | null
+  medium_wr: number | null
+  high_wr: number | null
+  low_games: number
+  medium_games: number
+  high_games: number
+  low_ratio: number | null
+  high_ratio: number | null
+  low_delta: number | null
+  delta: number | null
+  mastery_score: number | null
+  learning_score: number | null
+  investment_score: number | null
+  learning_tier: string | null
+  mastery_tier: string | null
+  // Bucket-level 95% Wilson CI
+  low_wr_ci_lower?: number | null
+  low_wr_ci_upper?: number | null
+  medium_wr_ci_lower?: number | null
+  medium_wr_ci_upper?: number | null
+  high_wr_ci_lower?: number | null
+  high_wr_ci_upper?: number | null
+}
+
+/**
+ * Per-lane mastery curve. The mastery axis is total champion mastery, not
+ * lane-specific mastery — Riot's API provides no per-lane mastery breakdown.
+ */
+export interface LaneCurve {
+  intervals: MasteryInterval[]
 }
 
 export interface MasteryInterval {
@@ -73,6 +114,10 @@ export interface SlopeIterationStat {
   valid_intervals: number | null
 }
 
+export interface SlopeIterationStatByLane extends SlopeIterationStat {
+  lane: string
+}
+
 export interface AnalysisData {
   filter: string
   filter_description: string
@@ -88,6 +133,10 @@ export interface AnalysisData {
   best_to_master: ChampionStat[]
   best_investment: ChampionStat[]
   mastery_curves: Record<string, MasteryChampionCurve>
+  // Per-lane views (optional — absent in older JSONs)
+  champion_stats_by_lane?: Record<string, Record<string, ChampionLaneStat>>
+  mastery_curves_by_lane?: Record<string, Record<string, LaneCurve>>
+  slope_iterations_by_lane?: SlopeIterationStatByLane[]
   // Pabu beta views (optional — absent in older JSONs)
   pabu_champion_stats?: Record<string, Omit<ChampionStat, 'champion'>>
   pabu_games_to_threshold?: GameTo50Entry[]

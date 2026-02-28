@@ -187,6 +187,32 @@ early_slope_ci = 1.96 × SE × 100
 
 where `iv0` and `iv2` are the first and third qualifying slope intervals. When the early slope ± CI spans a tier boundary (2, 5, or 8 pp), the Pickup tier chip in the Slope Iterations view is displayed faded with a "?" suffix to indicate statistical ambiguity.
 
+## Per-Lane Analysis
+
+All primary analysis (mastery buckets, win rate curves, slope metrics) runs with games pooled across all lanes a champion was played. For champions played overwhelmingly in one role (e.g. Draven ADC, Malphite Top), this is fine. For flex picks (e.g. Lux Mid/Support, Teemo Top/Support), pooled curves blend two distinct populations with different baseline win rates and learning patterns.
+
+The `_by_lane` output keys (`champion_stats_by_lane`, `mastery_curves_by_lane`, `slope_iterations_by_lane`) stratify all three analyses by the lane each game was played in. These are additive — existing pooled keys are unchanged.
+
+### Lane Field: `teamPosition`
+
+Lane assignment uses Riot's `teamPosition` field (team-context-aware position algorithm) with fallback to `individualPosition`. Both fields return `""` (not NULL) when unresolvable, so `NULLIF(..., '')` is applied before COALESCE. The canonical lane is resolved in the `_mp` temp table that all analysis queries read:
+
+```sql
+COALESCE(NULLIF(mp.team_position, ''), NULLIF(mp.individual_position, '')) AS individual_position
+```
+
+`teamPosition` handles lane swaps and edge cases that `individualPosition` misses and is the field Riot recommends for "where the champion actually played."
+
+### Mastery Axis Caveat
+
+The Riot Champion-Mastery-v4 API provides mastery per `(puuid, champion_id)` only — there is no per-lane mastery breakdown. A player with 100k Lux mastery accumulated primarily in Support will have those same 100k points recorded when their Lux-Mid games appear in analysis.
+
+This means the **mastery axis in lane-filtered curves represents total champion mastery, not role-specific mastery**. Lane filtering controls which games contribute to win rate computations, but cannot separate mastery accumulation by role. The UI displays a caveat when a lane filter is active.
+
+### Sample Size Gate
+
+A `(champion, lane)` entry is only emitted when that lane has `>= MINIMUM_SAMPLE_SIZE` (100) games in the medium mastery bucket. This prevents small flex-play samples from generating misleading tier labels.
+
 ## Key Limitations
 
 1. **Mastery is current, not historical.** The Champion-Mastery-v4 endpoint returns a player's mastery at the time of the API call, not at the time the match was played. A player who had 50k mastery during a match but has since climbed to 200k will be recorded at 200k. This biases mastery values upward for older matches and blurs the relationship somewhat. Restricting to recent patches (the `--patches current` filter) mitigates this by narrowing the time gap.

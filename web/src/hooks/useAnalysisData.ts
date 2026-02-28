@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AnalysisData, ChampionStat, EloFilter, GameTo50Entry, MasteryChampionCurve, SlopeIterationStat } from '../types/analysis'
+import type { AnalysisData, ChampionLaneStat, ChampionStat, EloFilter, GameTo50Entry, LaneCurve, MasteryChampionCurve, SlopeIterationStat, SlopeIterationStatByLane } from '../types/analysis'
 
 export interface ParsedData {
   champions: ChampionStat[]
@@ -13,6 +13,10 @@ export interface ParsedData {
   pabuEasiestToLearn: ChampionStat[]
   pabuBestToMaster: ChampionStat[]
   slopeIterations: SlopeIterationStat[]
+  // Per-lane fields
+  championStatsByLane: Record<string, Record<string, ChampionLaneStat>> | null
+  masteryChampionCurvesByLane: Record<string, Record<string, LaneCurve>> | null
+  slopeIterationsByLane: SlopeIterationStatByLane[]
 }
 
 const BASE_URL = import.meta.env.BASE_URL
@@ -64,6 +68,9 @@ function parseData(raw: AnalysisData): ParsedData {
     pabuEasiestToLearn: raw.pabu_easiest_to_learn ?? [],
     pabuBestToMaster: raw.pabu_best_to_master ?? [],
     slopeIterations: raw.slope_iterations ?? [],
+    championStatsByLane: raw.champion_stats_by_lane ?? null,
+    masteryChampionCurvesByLane: raw.mastery_curves_by_lane ?? null,
+    slopeIterationsByLane: raw.slope_iterations_by_lane ?? [],
   }
 }
 

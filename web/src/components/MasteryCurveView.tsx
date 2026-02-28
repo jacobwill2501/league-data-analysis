@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Autocomplete from '@mui/material/Autocomplete'
 import TextField from '@mui/material/TextField'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
+import ToggleButton from '@mui/material/ToggleButton'
 import {
   ComposedChart,
   Area,
@@ -14,8 +16,9 @@ import {
   ReferenceLine,
   ResponsiveContainer,
 } from 'recharts'
-import type { MasteryChampionCurve, MasteryInterval } from '../types/analysis'
+import type { LaneCurve, MasteryChampionCurve, MasteryInterval } from '../types/analysis'
 import { useTheme } from '@mui/material/styles'
+import { fmtLane } from '../utils/format'
 
 const getMid = (iv: MasteryInterval): number => {
   if (iv.min === 0) return 500
@@ -25,6 +28,7 @@ const getMid = (iv: MasteryInterval): number => {
 
 interface Props {
   masteryChampionCurves: Record<string, MasteryChampionCurve>
+  masteryChampionCurvesByLane?: Record<string, Record<string, LaneCurve>> | null
   pabuThreshold?: number | null
 }
 
@@ -49,12 +53,59 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: { payl
   )
 }
 
-export function MasteryCurveView({ masteryChampionCurves, pabuThreshold }: Props) {
-  const [selectedChamp, setSelectedChamp] = useState<string | null>(null)
+export function MasteryCurveView({ masteryChampionCurves, masteryChampionCurvesByLane, pabuThreshold }: Props) {
+  const [selectedChamp, setSelectedChamp] = useState<string | null>(() => {
+    return new URLSearchParams(window.location.search).get('champion') ?? null
+  })
+  const [selectedLane, setSelectedLane] = useState<string>(() => {
+    return new URLSearchParams(window.location.search).get('lane') ?? 'ALL'
+  })
   const theme = useTheme()
+  const isMounted = useRef(false)
+
+  // Reset lane selection when champion changes (user-initiated via autocomplete).
+  // Skip the first run so the URL-sourced lane is not overridden on mount.
+  useEffect(() => {
+    if (!isMounted.current) {
+      isMounted.current = true
+      return
+    }
+    setSelectedLane('ALL')
+  }, [selectedChamp])
 
   const championNames = Object.keys(masteryChampionCurves).sort()
-  const curveData = selectedChamp ? masteryChampionCurves[selectedChamp] : null
+
+  // Sync champion/lane state back to URL so it stays shareable after user changes them
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (selectedChamp) params.set('champion', selectedChamp)
+    else params.delete('champion')
+    if (selectedLane !== 'ALL') params.set('lane', selectedLane)
+    else params.delete('lane')
+    window.history.replaceState(null, '', `?${params.toString()}`)
+  }, [selectedChamp, selectedLane])
+
+  // Guard against stale URL champion (e.g. typo or old bookmark)
+  useEffect(() => {
+    if (selectedChamp && championNames.length > 0 && !championNames.includes(selectedChamp)) {
+      setSelectedChamp(null)
+      setSelectedLane('ALL')
+    }
+  }, [championNames, selectedChamp])
+
+  const availableLanes = useMemo(() => {
+    if (!selectedChamp || !masteryChampionCurvesByLane?.[selectedChamp]) return []
+    return Object.keys(masteryChampionCurvesByLane[selectedChamp])
+  }, [selectedChamp, masteryChampionCurvesByLane])
+
+  const curveData = useMemo(() => {
+    if (!selectedChamp) return null
+    if (selectedLane !== 'ALL' && masteryChampionCurvesByLane?.[selectedChamp]?.[selectedLane]) {
+      return masteryChampionCurvesByLane[selectedChamp][selectedLane]
+    }
+    return masteryChampionCurves[selectedChamp] ?? null
+  }, [selectedChamp, selectedLane, masteryChampionCurves, masteryChampionCurvesByLane])
+
   const chartData = curveData ? curveData.intervals.map(iv => ({
     ...iv,
     mid: getMid(iv),
@@ -97,13 +148,29 @@ export function MasteryCurveView({ masteryChampionCurves, pabuThreshold }: Props
 
   return (
     <Box sx={{ p: 3 }}>
-      <Autocomplete
-        options={championNames}
-        value={selectedChamp}
-        onChange={(_, v) => setSelectedChamp(v)}
-        renderInput={params => <TextField {...params} label="Select Champion" size="small" />}
-        sx={{ width: 260, mb: 3 }}
-      />
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', mb: 3 }}>
+        <Autocomplete
+          options={championNames}
+          value={selectedChamp}
+          onChange={(_, v) => setSelectedChamp(v)}
+          renderInput={params => <TextField {...params} label="Select Champion" size="small" />}
+          sx={{ width: 260 }}
+        />
+
+        {availableLanes.length > 1 && (
+          <ToggleButtonGroup
+            value={selectedLane}
+            exclusive
+            size="small"
+            onChange={(_, v) => v && setSelectedLane(v)}
+          >
+            <ToggleButton value="ALL">All Lanes</ToggleButton>
+            {availableLanes.map(l => (
+              <ToggleButton key={l} value={l}>{fmtLane(l)}</ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        )}
+      </Box>
 
       {!selectedChamp && (
         <Typography color="text.secondary">Select a champion to view their win rate by mastery interval.</Typography>
@@ -117,9 +184,15 @@ export function MasteryCurveView({ masteryChampionCurves, pabuThreshold }: Props
 
       {curveData && curveData.intervals.length > 0 && (
         <Box>
-          <Typography variant="h6" sx={{ mb: 2 }}>
-            {selectedChamp} — Win Rate by Mastery Interval
+          <Typography variant="h6" sx={{ mb: 0.5 }}>
+            {selectedChamp}{selectedLane !== 'ALL' ? ` — ${fmtLane(selectedLane)}` : ''} — Win Rate by Mastery Interval
           </Typography>
+          {selectedLane !== 'ALL' && (
+            <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
+              Mastery axis = total champion mastery, not {fmtLane(selectedLane)}-specific.
+              Riot's API does not provide per-role mastery data.
+            </Typography>
+          )}
           <ResponsiveContainer width="100%" height={400}>
             <ComposedChart data={chartData} margin={{ top: 10, right: 40, left: 10, bottom: 60 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />

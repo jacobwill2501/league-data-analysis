@@ -21,8 +21,10 @@ import Chip from '@mui/material/Chip'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Tooltip from '@mui/material/Tooltip'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
+import ToggleButton from '@mui/material/ToggleButton'
 import { LineChart, Line, ReferenceLine, YAxis, Tooltip as RechartsTooltip } from 'recharts'
-import type { MasteryChampionCurve, SlopeIterationStat } from '../types/analysis'
+import type { LaneCurve, MasteryChampionCurve, SlopeIterationStat, SlopeIterationStatByLane } from '../types/analysis'
 import { ChampionIcon } from './ChampionIcon'
 import { fmtLane, fmtPct } from '../utils/format'
 
@@ -39,14 +41,18 @@ function SlopeSparkline({
   champion,
   slopeTier,
   masteryChampionCurves,
+  curveOverride,
+  onClick,
 }: {
   champion: string
   slopeTier: string | null
   masteryChampionCurves: Record<string, MasteryChampionCurve>
+  curveOverride?: { intervals: MasteryChampionCurve['intervals'] } | null
+  onClick?: () => void
 }) {
   const [tooltipState, setTooltipState] = useState<{ x: number; y: number; d: { label: string; rawWr: number; games: number } } | null>(null)
 
-  const curve = masteryChampionCurves[champion]
+  const curve = curveOverride ?? masteryChampionCurves[champion]
   if (!curve) return <span style={{ color: '#666' }}>—</span>
 
   const rawData = curve.intervals
@@ -82,36 +88,42 @@ function SlopeSparkline({
 
   return (
     <>
-      <LineChart
-        width={120}
-        height={44}
-        data={chartData}
-        margin={{ top: 6, right: 4, bottom: 6, left: 4 }}
-        onMouseMove={(state, event) => {
-          const idx = state.activeIndex
-          if (idx !== undefined && idx !== null && chartData[idx as number]) {
-            const d = chartData[idx as number]
-            const e = event as React.MouseEvent
-            setTooltipState({ x: e.clientX, y: e.clientY, d })
-          } else {
-            setTooltipState(null)
-          }
-        }}
-        onMouseLeave={() => setTooltipState(null)}
+      <Box
+        onClick={onClick}
+        sx={{ cursor: onClick ? 'pointer' : 'default', display: 'inline-block' }}
+        title={onClick ? 'Click to open Mastery Curve' : undefined}
       >
-        <YAxis domain={domain} hide />
-        <ReferenceLine y={50} stroke="#555" strokeDasharray="2 2" strokeWidth={1} />
-        <RechartsTooltip content={() => null} />
-        <Line
-          type="monotone"
-          dataKey="wr"
-          dot={false}
-          activeDot={{ r: 3, fill: lineColor, strokeWidth: 0 }}
-          strokeWidth={1.5}
-          stroke={lineColor}
-          isAnimationActive={false}
-        />
-      </LineChart>
+        <LineChart
+          width={120}
+          height={44}
+          data={chartData}
+          margin={{ top: 6, right: 4, bottom: 6, left: 4 }}
+          onMouseMove={(state, event) => {
+            const idx = state.activeIndex
+            if (idx !== undefined && idx !== null && chartData[idx as number]) {
+              const d = chartData[idx as number]
+              const e = event as React.MouseEvent
+              setTooltipState({ x: e.clientX, y: e.clientY, d })
+            } else {
+              setTooltipState(null)
+            }
+          }}
+          onMouseLeave={() => setTooltipState(null)}
+        >
+          <YAxis domain={domain} hide />
+          <ReferenceLine y={50} stroke="#555" strokeDasharray="2 2" strokeWidth={1} />
+          <RechartsTooltip content={() => null} />
+          <Line
+            type="monotone"
+            dataKey="wr"
+            dot={false}
+            activeDot={{ r: 3, fill: lineColor, strokeWidth: 0 }}
+            strokeWidth={1.5}
+            stroke={lineColor}
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </Box>
       {tooltipState && createPortal(
         <div style={{
           position: 'fixed',
@@ -184,12 +196,28 @@ const nullLastSortingFn = <T extends object>(
 interface Props {
   data: SlopeIterationStat[]
   masteryChampionCurves?: Record<string, MasteryChampionCurve>
+  dataByLane?: SlopeIterationStatByLane[]
+  masteryChampionCurvesByLane?: Record<string, Record<string, LaneCurve>> | null
+  onChampionClick?: (champion: string, lane: string | null) => void
 }
 
-export function SlopeIterationsView({ data, masteryChampionCurves }: Props) {
+export function SlopeIterationsView({ data, masteryChampionCurves, dataByLane, masteryChampionCurvesByLane, onChampionClick }: Props) {
   const [sorting, setSorting] = useState<SortingState>([
     { id: 'slope_tier', desc: false },
   ])
+  const [laneSel, setLaneSel] = useState<string>('ALL')
+
+  const availableLanes = useMemo(
+    () => [...new Set((dataByLane ?? []).map(r => r.lane))].sort(),
+    [dataByLane]
+  )
+
+  const activeData: SlopeIterationStat[] = useMemo(() => {
+    if (laneSel !== 'ALL' && dataByLane) {
+      return dataByLane.filter(r => r.lane === laneSel)
+    }
+    return data
+  }, [laneSel, dataByLane, data])
 
   const columns = useMemo((): ColumnDef<SlopeIterationStat>[] => [
     {
@@ -224,14 +252,24 @@ export function SlopeIterationsView({ data, masteryChampionCurves }: Props) {
       id: 'curve',
       header: 'Curve',
       enableSorting: false,
-      cell: ({ row }) =>
-        masteryChampionCurves ? (
+      cell: ({ row }) => {
+        if (!masteryChampionCurves) return null
+        const rowLane = (row.original as SlopeIterationStatByLane).lane ?? null
+        const curveOverride = rowLane && masteryChampionCurvesByLane?.[row.original.champion]?.[rowLane]
+          ? masteryChampionCurvesByLane[row.original.champion][rowLane]
+          : null
+        return (
           <SlopeSparkline
             champion={row.original.champion}
             slopeTier={row.original.slope_tier}
             masteryChampionCurves={masteryChampionCurves}
+            curveOverride={curveOverride}
+            onClick={onChampionClick
+              ? () => onChampionClick(row.original.champion, rowLane)
+              : undefined}
           />
-        ) : null,
+        )
+      },
     },
     {
       id: 'early_slope',
@@ -280,10 +318,10 @@ export function SlopeIterationsView({ data, masteryChampionCurves }: Props) {
         return v === null || v === undefined ? '—' : String(v)
       },
     },
-  ], [masteryChampionCurves])
+  ], [masteryChampionCurves, masteryChampionCurvesByLane, onChampionClick])
 
   const table = useReactTable({
-    data,
+    data: activeData,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
@@ -295,7 +333,7 @@ export function SlopeIterationsView({ data, masteryChampionCurves }: Props) {
     slope_tier:         'Early-mastery difficulty. Based on win rate gain in the first 3 mastery brackets. A faded chip with "?" means the 95% confidence interval spans a tier boundary — treat the tier as approximate.',
     growth_type:        'Whether the champion keeps improving at high mastery. Plateau = WR levels off after competency. Gradual = slow continued gains. Continual = still growing significantly at 200+ games.',
     curve:              'Win rate progression across game brackets (5+ games only — matches the range used for all slope metrics). Color matches Pickup tier. Dashed line = 50% WR.',
-    early_slope:        'Win rate gain across the first 3 mastery brackets (~5k–50k points). Drives the Pickup tier. A 95% confidence interval (±CI) is computed from sample sizes — wide CI on a champion near a tier boundary will show a faded "?" chip.',
+    early_slope:        'Win rate gain across the first 3 mastery brackets (~5k–50k points). Drives the Pickup tier. When filtered to a specific role, slope uses games in that role only — but the mastery axis still represents total champion mastery (not role-specific). A 95% CI is computed from sample sizes — near a tier boundary, the chip shows a faded "?" indicator.',
     late_slope:         'Win rate gain across the last 3 mastery brackets (100k to end of available data). Positive = champion rewards deep mastery investment. Drives the Growth tier label.',
     total_slope:        'Total win rate gain from starting mastery to peak mastery (percentage points). Smoothed to reduce noise from low-sample brackets.',
 
@@ -305,6 +343,27 @@ export function SlopeIterationsView({ data, masteryChampionCurves }: Props) {
   }
 
   return (
+    <>
+    {availableLanes.length > 1 && (
+      <Box sx={{ px: 2, pt: 1.5, pb: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+        <ToggleButtonGroup
+          value={laneSel}
+          exclusive
+          size="small"
+          onChange={(_, v) => v && setLaneSel(v)}
+        >
+          <ToggleButton value="ALL">All Lanes</ToggleButton>
+          {availableLanes.map(l => (
+            <ToggleButton key={l} value={l}>{fmtLane(l)}</ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+        {laneSel !== 'ALL' && (
+          <Typography variant="caption" color="text.secondary" sx={{ ml: 2 }}>
+            Mastery axis = total champion mastery, not {fmtLane(laneSel)}-specific.
+          </Typography>
+        )}
+      </Box>
+    )}
     <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 0 }}>
       <Table size="small" stickyHeader>
         <TableHead>
@@ -379,11 +438,27 @@ export function SlopeIterationsView({ data, masteryChampionCurves }: Props) {
                   const BOUNDARIES = [2, 5, 8]
                   const isUncertain = ci != null && es != null &&
                     BOUNDARIES.some(b => es - ci < b && es + ci > b)
+
+                  // Estimate games per early bracket needed to narrow CI below the boundary gap.
+                  // Formula: n ≥ 1.96² × 2 × 0.5 × 0.5 × 100² / distance² = 19208 / distance²
+                  // Uses p=0.5 (worst case) and equal n in both boundary intervals.
+                  let gamesNeededText = ''
+                  if (isUncertain && es != null) {
+                    const nearestBoundary = BOUNDARIES.reduce((prev, curr) =>
+                      Math.abs(curr - es) < Math.abs(prev - es) ? curr : prev
+                    )
+                    const distance = Math.abs(es - nearestBoundary)
+                    if (distance >= 0.05) {
+                      const n = Math.ceil(19208 / (distance * distance))
+                      gamesNeededText = ` (~${n.toLocaleString()} games per early bracket needed for confident assignment)`
+                    }
+                  }
+
                   return (
                     <TableCell key={cell.id} sx={{ whiteSpace: 'nowrap' }}>
                       {tier ? (
                         <Tooltip
-                          title={isUncertain ? `Tier boundary uncertain — 95% CI: ±${ci?.toFixed(1)}pp` : ''}
+                          title={isUncertain ? `Tier boundary uncertain — 95% CI: ±${ci?.toFixed(1)}pp${gamesNeededText}` : ''}
                           placement="top"
                           arrow
                           disableHoverListener={!isUncertain}
@@ -475,5 +550,6 @@ export function SlopeIterationsView({ data, masteryChampionCurves }: Props) {
         </Box>
       )}
     </TableContainer>
+    </>
   )
 }

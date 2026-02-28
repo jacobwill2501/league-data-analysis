@@ -321,6 +321,10 @@ class MasteryAnalyzer:
                         f"{champ} ({bucket_name}: {data[bucket_name]['games']} games)"
                     )
 
+            low_ci  = _wilson_ci(data['low']['wins'],    data['low']['games'])
+            med_ci  = _wilson_ci(data['medium']['wins'], data['medium']['games'])
+            high_ci = _wilson_ci(data['high']['wins'],   data['high']['games'])
+
             results[champ] = {
                 'low_wr': low_wr,
                 'medium_wr': med_wr,
@@ -338,6 +342,12 @@ class MasteryAnalyzer:
                 'learning_tier': learning_tier,
                 'mastery_tier': mastery_tier,
                 'most_common_lane': most_common_lane,
+                'low_wr_ci_lower':    round(low_ci[0],  4) if low_ci[0]  is not None else None,
+                'low_wr_ci_upper':    round(low_ci[1],  4) if low_ci[1]  is not None else None,
+                'medium_wr_ci_lower': round(med_ci[0],  4) if med_ci[0]  is not None else None,
+                'medium_wr_ci_upper': round(med_ci[1],  4) if med_ci[1]  is not None else None,
+                'high_wr_ci_lower':   round(high_ci[0], 4) if high_ci[0] is not None else None,
+                'high_wr_ci_upper':   round(high_ci[1], 4) if high_ci[1] is not None else None,
             }
 
         if low_data_champs:
@@ -719,6 +729,161 @@ class MasteryAnalyzer:
         logger.info(f"  Champions with slope data: {len(results)}")
         return results
 
+    def compute_champion_stats_by_lane(
+            self, bucket_rows: List[Dict], lane_rows: List[Dict]) -> Dict:
+        """Compute per-champion, per-lane bucket statistics.
+
+        Returns a nested dict keyed by champion name → lane → stat dict.
+        Only emits a (champion, lane) entry when that lane has >= MINIMUM_SAMPLE_SIZE
+        games in the medium bucket to prevent tiny flex-play entries.
+
+        NOTE: mastery_points used here are total champion mastery, not lane-specific.
+        Riot's API provides no per-lane mastery breakdown.
+        """
+        logger.info("Computing per-champion per-lane statistics...")
+
+        champ_lane_data: Dict = defaultdict(
+            lambda: defaultdict(lambda: {
+                'low':    {'wins': 0, 'games': 0},
+                'medium': {'wins': 0, 'games': 0},
+                'high':   {'wins': 0, 'games': 0},
+            })
+        )
+        for row in bucket_rows:
+            champ_lane_data[row['champion_name']][row['lane']][row['bucket']]['wins']  = row['wins']
+            champ_lane_data[row['champion_name']][row['lane']][row['bucket']]['games'] = row['games']
+
+        results: Dict = {}
+        for champ, lane_map in champ_lane_data.items():
+            results[champ] = {}
+            for lane, data in lane_map.items():
+                if data['medium']['games'] < MINIMUM_SAMPLE_SIZE:
+                    continue
+
+                low_wr  = data['low']['wins']    / data['low']['games']    if data['low']['games']    >= MINIMUM_SAMPLE_SIZE else None
+                med_wr  = data['medium']['wins']  / data['medium']['games']
+                high_wr = data['high']['wins']   / data['high']['games']   if data['high']['games']   >= MINIMUM_SAMPLE_SIZE else None
+
+                low_ratio  = low_wr  / med_wr if (low_wr  is not None) else None
+                high_ratio = high_wr / med_wr if (high_wr is not None) else None
+                low_delta  = (low_wr  - med_wr) * 100 if low_ratio  is not None else None
+                delta      = (high_wr - med_wr) * 100 if high_ratio is not None else None
+
+                mastery_score    = ((high_wr * 100 - 50) + (high_ratio - 1) * 50) if (high_wr is not None and high_ratio is not None) else None
+                learning_score   = ((low_wr  * 100 - 50) + (low_ratio  - 1) * 50) if (low_wr  is not None and low_ratio  is not None) else None
+                investment_score = (learning_score * 0.4 + mastery_score * 0.6)    if (learning_score is not None and mastery_score is not None) else None
+
+                low_ci  = _wilson_ci(data['low']['wins'],    data['low']['games'])
+                med_ci  = _wilson_ci(data['medium']['wins'], data['medium']['games'])
+                high_ci = _wilson_ci(data['high']['wins'],   data['high']['games'])
+
+                results[champ][lane] = {
+                    'low_wr':           low_wr,
+                    'medium_wr':        med_wr,
+                    'high_wr':          high_wr,
+                    'low_games':        data['low']['games'],
+                    'medium_games':     data['medium']['games'],
+                    'high_games':       data['high']['games'],
+                    'low_ratio':        low_ratio,
+                    'high_ratio':       high_ratio,
+                    'low_delta':        low_delta,
+                    'delta':            delta,
+                    'mastery_score':    mastery_score,
+                    'learning_score':   learning_score,
+                    'investment_score': investment_score,
+                    'learning_tier':    _learning_tier(learning_score),
+                    'mastery_tier':     _mastery_tier(mastery_score),
+                    'low_wr_ci_lower':    round(low_ci[0],  4) if low_ci[0]  is not None else None,
+                    'low_wr_ci_upper':    round(low_ci[1],  4) if low_ci[1]  is not None else None,
+                    'medium_wr_ci_lower': round(med_ci[0],  4) if med_ci[0]  is not None else None,
+                    'medium_wr_ci_upper': round(med_ci[1],  4) if med_ci[1]  is not None else None,
+                    'high_wr_ci_lower':   round(high_ci[0], 4) if high_ci[0] is not None else None,
+                    'high_wr_ci_upper':   round(high_ci[1], 4) if high_ci[1] is not None else None,
+                }
+
+            if not results[champ]:
+                del results[champ]
+
+        logger.info(f"  Champions with per-lane stats: {len(results)}")
+        return results
+
+    def compute_mastery_curves_by_champion_and_lane(
+            self, lane_interval_rows: List[Dict]) -> Dict:
+        """Compute per-champion, per-lane mastery curves.
+
+        Returns a nested dict: champion → lane → {intervals: [...]}.
+        Only emits a lane when at least one interval meets MINIMUM_SAMPLE_SIZE.
+
+        NOTE: The mastery axis represents total champion mastery, not lane-specific
+        mastery. Riot's API provides no per-lane mastery breakdown.
+        """
+        logger.info("Computing per-lane mastery curves...")
+
+        champ_lane_interval: Dict = defaultdict(
+            lambda: defaultdict(lambda: defaultdict(lambda: {'wins': 0, 'games': 0}))
+        )
+        for row in lane_interval_rows:
+            slot = champ_lane_interval[row['champion_name']][row['lane']][row['interval_index']]
+            slot['wins']  = row['wins']
+            slot['games'] = row['games']
+
+        results: Dict = {}
+        for champ, lane_map in champ_lane_interval.items():
+            results[champ] = {}
+            for lane, intervals in lane_map.items():
+                interval_list = []
+                for idx, (lo, hi, label) in enumerate(WIN_RATE_INTERVALS):
+                    s = intervals.get(idx)
+                    if s is None or s['games'] < MINIMUM_SAMPLE_SIZE:
+                        continue
+                    ci_lo, ci_hi = _wilson_ci(s['wins'], s['games'])
+                    interval_list.append({
+                        'label':    label,
+                        'min':      lo,
+                        'max':      hi if hi != float('inf') else None,
+                        'win_rate': s['wins'] / s['games'],
+                        'games':    s['games'],
+                        'ci_lower': round(ci_lo, 4) if ci_lo is not None else None,
+                        'ci_upper': round(ci_hi, 4) if ci_hi is not None else None,
+                    })
+                if interval_list:
+                    results[champ][lane] = {'intervals': interval_list}
+
+            if not results[champ]:
+                del results[champ]
+
+        logger.info(f"  Champions with per-lane mastery curve data: {len(results)}")
+        return results
+
+    def compute_slope_iterations_by_lane(self, mastery_curves_by_lane: Dict) -> List[Dict]:
+        """Compute slope iterations for each (champion, lane) pair.
+
+        Re-uses compute_slope_iterations() on per-lane curve data.
+        Each result row includes a 'lane' field alongside 'most_common_lane'.
+        """
+        logger.info("Computing per-lane slope iterations...")
+
+        results = []
+        for champ, lane_map in mastery_curves_by_lane.items():
+            for lane, curve_data in lane_map.items():
+                single_curve = {champ: {'lane': lane, 'intervals': curve_data['intervals']}}
+                for r in self.compute_slope_iterations(single_curve):
+                    r['lane'] = lane
+                    results.append(r)
+
+        slope_tier_order = {
+            'Easy Pickup': 0, 'Mild Pickup': 1, 'Hard Pickup': 2, 'Very Hard Pickup': 3,
+        }
+
+        def sort_key(entry):
+            tier_idx = slope_tier_order.get(entry.get('slope_tier'), len(slope_tier_order))
+            ig = entry.get('inflection_games')
+            return (tier_idx, ig if ig is not None else float('inf'))
+
+        results.sort(key=sort_key)
+        logger.info(f"  Per-lane slope entries: {len(results)}")
+        return results
+
     def compute_bias_champion_stats(self, games_to_50: List[Dict]) -> Dict:
         """Compute per-champion statistics using bias (per-champion) mastery buckets.
 
@@ -909,7 +1074,7 @@ class MasteryAnalyzer:
 
     def _analyze_inner(self, pipeline_start: float) -> Dict:
         """Inner analysis pipeline — called with _fm already materialized."""
-        STEPS_TOTAL = 14  # 1 DB materialization + 13 compute steps
+        STEPS_TOTAL = 17  # 1 DB materialization + 16 compute steps
         steps_done = [1]  # DB materialization already counted as step 1
 
         def step(name, fn, *args, **kwargs):
@@ -953,6 +1118,21 @@ class MasteryAnalyzer:
         bias_champion_stats = step("Bias champion stats", self.compute_bias_champion_stats, games_to_50)
         mastery_curves = step("Mastery curves", self.compute_mastery_curves_by_champion, interval_rows, lane_rows)
         slope_iterations = step("Slope iterations", self.compute_slope_iterations, mastery_curves)
+
+        # Per-lane analysis
+        lane_bucket_rows, lane_lane_rows = step(
+            "Champion stats by lane (load)", self.db.get_champion_stats_aggregated_by_lane)
+        lane_interval_rows = step(
+            "Mastery curves by lane (load)", self.db.get_mastery_curves_aggregated_by_lane)
+        champion_stats_by_lane = step(
+            "Champion stats by lane",
+            self.compute_champion_stats_by_lane, lane_bucket_rows, lane_lane_rows)
+        mastery_curves_by_lane = step(
+            "Mastery curves by lane",
+            self.compute_mastery_curves_by_champion_and_lane, lane_interval_rows)
+        slope_iterations_by_lane = step(
+            "Slope iterations by lane",
+            self.compute_slope_iterations_by_lane, mastery_curves_by_lane)
 
         # Pabu: 30k medium boundary + elo-normalized threshold
         elo_avg_wr = summary['overall_win_rate']
@@ -1089,6 +1269,9 @@ class MasteryAnalyzer:
             ],
             'mastery_curves': mastery_curves,
             'slope_iterations': slope_iterations,
+            'champion_stats_by_lane': champion_stats_by_lane,
+            'mastery_curves_by_lane': mastery_curves_by_lane,
+            'slope_iterations_by_lane': slope_iterations_by_lane,
             'pabu_champion_stats': pabu_champion_stats,
             'pabu_games_to_threshold': pabu_games_to_threshold,
             'pabu_easiest_to_learn': [

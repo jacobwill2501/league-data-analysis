@@ -114,7 +114,9 @@ export function HelpModal({ open, onClose }: Props) {
           <P>
             <strong>All Stats</strong> — Full table showing every champion with all win rates (Low,
             Medium, High mastery buckets), both ratios, all three scores (Learning, Mastery,
-            Investment), and the assigned tier labels.
+            Investment), and the assigned tier labels. Win rate cells (Low WR, Medium WR, High WR)
+            show a 95% Wilson confidence interval on hover — larger game counts produce narrower
+            intervals.
           </P>
           <P>
             <strong>Games to 50%</strong> — An estimate of how many games a player needs to play on
@@ -128,6 +130,9 @@ export function HelpModal({ open, onClose }: Props) {
             their win rate evolves as players invest more time. A shaded band around the line shows
             the 95% Wilson confidence interval — wider bands indicate intervals with fewer games.
             Hover a data point to see the exact CI range. Requires a minimum sample size per interval.
+            For champions played in multiple roles, a lane toggle appears — select a specific role to
+            isolate that role's win-rate progression. Note: the mastery axis shows total champion
+            mastery, not role-specific mastery, since Riot's API provides no per-role mastery data.
           </P>
         </Section>
 
@@ -283,7 +288,7 @@ export function HelpModal({ open, onClose }: Props) {
 
         <Divider sx={{ my: 2 }} />
 
-        <Section title="Slope Iterations (Beta)">
+        <Section title="Slope Iterations">
           <P>
             <strong>Slope Iterations</strong> breaks down the mastery learning curve into three
             distinct signals, mapping to the Fitts &amp; Posner three-stage skill acquisition model:
@@ -355,7 +360,10 @@ export function HelpModal({ open, onClose }: Props) {
             levels will show Easy Pickup, not an artificially low one.
           </P>
           <P>
-            <em>This view is experimental and may change in future releases.</em>
+            A lane filter toggle inside the view lets you isolate a specific role. When filtered,
+            slope metrics use only games played in that role — but the mastery axis still represents
+            total champion mastery, not role-specific mastery, since Riot's API does not provide
+            per-role mastery breakdowns.
           </P>
         </Section>
 
@@ -442,6 +450,12 @@ export function HelpModal({ open, onClose }: Props) {
             <strong>Sorting:</strong> Click any column header to sort ascending or descending. The
             default sort for Easiest to Learn is Learning Score descending; for Best to Master it is
             Mastery Score descending.
+          </P>
+          <P>
+            <strong>Lane filter:</strong> When a specific role is selected, the table draws from
+            per-lane stats so that flex picks (e.g. Lux) appear in every role they're played in —
+            not just their most common one. Win rates and scores reflect only games played in that
+            role.
           </P>
           <P>
             <strong>"low data":</strong> A bucket shows "low data" when fewer than 100 games exist

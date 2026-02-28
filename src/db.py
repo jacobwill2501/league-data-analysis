@@ -128,6 +128,7 @@ class Database:
                     lane TEXT,
                     role TEXT,
                     individual_position TEXT,
+                    team_position TEXT,
                     game_duration INTEGER NOT NULL,
                     game_version TEXT NOT NULL,
                     queue_id INTEGER NOT NULL,
@@ -165,6 +166,16 @@ class Database:
                     PRIMARY KEY (task_name, region, key)
                 )
             """)
+
+            # Schema migrations — safe to run on existing databases.
+            # ALTER TABLE ADD COLUMN is a no-op if the column already exists
+            # via the try/except, so this block is idempotent.
+            try:
+                cursor.execute(
+                    "ALTER TABLE match_participants ADD COLUMN team_position TEXT"
+                )
+            except Exception:
+                pass  # Column already exists
 
             conn.commit()
             logger.info("Database schema initialized successfully")
@@ -402,11 +413,11 @@ class Database:
             cursor.executemany("""
                 INSERT OR REPLACE INTO match_participants
                 (match_id, puuid, champion_id, champion_name, team_id, win,
-                 lane, role, individual_position, game_duration, game_version,
-                 queue_id, game_creation)
+                 lane, role, individual_position, team_position,
+                 game_duration, game_version, queue_id, game_creation)
                 VALUES (:match_id, :puuid, :champion_id, :champion_name, :team_id, :win,
-                        :lane, :role, :individual_position, :game_duration, :game_version,
-                        :queue_id, :game_creation)
+                        :lane, :role, :individual_position, :team_position,
+                        :game_duration, :game_version, :queue_id, :game_creation)
             """, participants)
 
     # Count helpers
@@ -727,7 +738,8 @@ class Database:
             CREATE TEMP TABLE _mp AS
             SELECT
                 mp.champion_name,
-                mp.individual_position,
+                COALESCE(NULLIF(mp.team_position, ''), NULLIF(mp.individual_position, ''))
+                    AS individual_position,
                 CAST(mp.win AS INTEGER)                AS win,
                 COALESCE(cm.mastery_points, 0)         AS mastery_points
             FROM match_participants mp
@@ -1034,6 +1046,80 @@ class Database:
             for r in cur.fetchall()
         ]
         return interval_rows, lane_rows
+
+    def get_champion_stats_aggregated_by_lane(self) -> tuple:
+        """Return (bucket_rows, lane_rows) grouped by (champion_name, lane).
+
+        Uses the canonical individual_position field from _mp (which already
+        resolves team_position → individual_position via COALESCE).
+        """
+        bucket_case = """CASE
+            WHEN mastery_points < 10000  THEN 'low'
+            WHEN mastery_points < 100000 THEN 'medium'
+            ELSE 'high'
+        END"""
+        cur = self._analysis_conn.cursor()
+        cur.execute(f"""
+            SELECT
+                champion_name,
+                individual_position  AS lane,
+                {bucket_case}        AS bucket,
+                SUM(win)             AS wins,
+                COUNT(*)             AS games
+            FROM _mp
+            WHERE individual_position IS NOT NULL
+            GROUP BY champion_name, lane, bucket
+        """)
+        bucket_rows = [
+            {'champion_name': r[0], 'lane': r[1], 'bucket': r[2],
+             'wins': r[3], 'games': r[4]}
+            for r in cur.fetchall()
+        ]
+
+        cur.execute("""
+            SELECT champion_name, individual_position, COUNT(*) AS cnt
+            FROM _mp
+            WHERE individual_position IS NOT NULL
+            GROUP BY champion_name, individual_position
+        """)
+        lane_rows = [
+            {'champion_name': r[0], 'lane': r[1], 'cnt': r[2]}
+            for r in cur.fetchall()
+        ]
+        return bucket_rows, lane_rows
+
+    def get_mastery_curves_aggregated_by_lane(self) -> list:
+        """Return interval_rows grouped by (champion_name, lane, interval_idx).
+
+        Uses the same mastery interval boundaries as get_mastery_curves_aggregated().
+        """
+        interval_case = """CASE
+            WHEN mastery_points < 3500   THEN 0
+            WHEN mastery_points < 17500  THEN 1
+            WHEN mastery_points < 35000  THEN 2
+            WHEN mastery_points < 70000  THEN 3
+            WHEN mastery_points < 140000 THEN 4
+            WHEN mastery_points < 350000 THEN 5
+            WHEN mastery_points < 700000 THEN 6
+            ELSE 7
+        END"""
+        cur = self._analysis_conn.cursor()
+        cur.execute(f"""
+            SELECT
+                champion_name,
+                individual_position  AS lane,
+                {interval_case}      AS interval_idx,
+                SUM(win)             AS wins,
+                COUNT(*)             AS games
+            FROM _mp
+            WHERE individual_position IS NOT NULL
+            GROUP BY champion_name, lane, interval_idx
+        """)
+        return [
+            {'champion_name': r[0], 'lane': r[1], 'interval_index': r[2],
+             'wins': r[3], 'games': r[4]}
+            for r in cur.fetchall()
+        ]
 
     def iter_bias_mastery_data(self, elo_filter: str,
                                patch_filter: Optional[List[str]] = None):
