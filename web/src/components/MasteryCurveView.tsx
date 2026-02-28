@@ -4,7 +4,8 @@ import Typography from '@mui/material/Typography'
 import Autocomplete from '@mui/material/Autocomplete'
 import TextField from '@mui/material/TextField'
 import {
-  LineChart,
+  ComposedChart,
+  Area,
   Line,
   XAxis,
   YAxis,
@@ -39,6 +40,11 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: { payl
       <Typography variant="body2" fontFamily="monospace" color="text.secondary">
         Games: {d.games.toLocaleString()}
       </Typography>
+      {d.ci_lower != null && d.ci_upper != null && (
+        <Typography variant="body2" fontFamily="monospace" sx={{ color: '#aaa', fontSize: 11 }}>
+          95% CI: [{(d.ci_lower * 100).toFixed(1)}%, {(d.ci_upper * 100).toFixed(1)}%]
+        </Typography>
+      )}
     </Box>
   )
 }
@@ -49,7 +55,23 @@ export function MasteryCurveView({ masteryChampionCurves, pabuThreshold }: Props
 
   const championNames = Object.keys(masteryChampionCurves).sort()
   const curveData = selectedChamp ? masteryChampionCurves[selectedChamp] : null
-  const chartData = curveData ? curveData.intervals.map(iv => ({ ...iv, mid: getMid(iv) })) : []
+  const chartData = curveData ? curveData.intervals.map(iv => ({
+    ...iv,
+    mid: getMid(iv),
+    ci_upper: iv.ci_upper ?? null,
+    ci_lower: iv.ci_lower ?? null,
+  })) : []
+
+  const yMin = chartData.length
+    ? Math.min(...chartData.map(d => d.ci_lower ?? d.win_rate)) - 0.01
+    : 0.38
+  const yMax = chartData.length
+    ? Math.max(...chartData.map(d => d.ci_upper ?? d.win_rate)) + 0.01
+    : 0.64
+  const yDomain: [number, number] = [
+    Math.min(yMin, 0.38),
+    Math.max(yMax, 0.64),
+  ]
 
   const AngledTick = ({ x, y, payload }: { x?: number; y?: number; payload?: { value: number } }) => {
     const iv = chartData.find(d => d.mid === payload?.value)
@@ -70,6 +92,8 @@ export function MasteryCurveView({ masteryChampionCurves, pabuThreshold }: Props
       </g>
     )
   }
+
+  const ciColor = theme.palette.primary.main
 
   return (
     <Box sx={{ p: 3 }}>
@@ -97,7 +121,7 @@ export function MasteryCurveView({ masteryChampionCurves, pabuThreshold }: Props
             {selectedChamp} — Win Rate by Mastery Interval
           </Typography>
           <ResponsiveContainer width="100%" height={400}>
-            <LineChart data={chartData} margin={{ top: 10, right: 40, left: 10, bottom: 60 }}>
+            <ComposedChart data={chartData} margin={{ top: 10, right: 40, left: 10, bottom: 60 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
               <XAxis
                 type="number"
@@ -109,7 +133,7 @@ export function MasteryCurveView({ masteryChampionCurves, pabuThreshold }: Props
                 label={{ value: 'Mastery Points', position: 'insideBottom', offset: -35, fontSize: 12, fill: theme.palette.text.secondary }}
               />
               <YAxis
-                domain={[0.38, 0.64]}
+                domain={yDomain}
                 tickFormatter={v => `${(v * 100).toFixed(0)}%`}
                 tick={{ fontSize: 12, fill: theme.palette.text.secondary }}
                 label={{ value: 'Win Rate', angle: -90, position: 'insideLeft', offset: 0, fontSize: 12, fill: theme.palette.text.secondary }}
@@ -129,6 +153,31 @@ export function MasteryCurveView({ masteryChampionCurves, pabuThreshold }: Props
                   label={{ value: `Elo avg (${(pabuThreshold * 100).toFixed(1)}%)`, position: 'insideBottomRight', fontSize: 11, fill: theme.palette.secondary.main }}
                 />
               )}
+              {/* CI band: ci_upper fills down, ci_lower masks below it, leaving only the band */}
+              <Area
+                type="monotone"
+                dataKey="ci_upper"
+                fill={ciColor}
+                fillOpacity={0.12}
+                stroke="none"
+                dot={false}
+                activeDot={false}
+                isAnimationActive={false}
+                legendType="none"
+                name=""
+              />
+              <Area
+                type="monotone"
+                dataKey="ci_lower"
+                fill={theme.palette.background.paper}
+                fillOpacity={1}
+                stroke="none"
+                dot={false}
+                activeDot={false}
+                isAnimationActive={false}
+                legendType="none"
+                name=""
+              />
               <Line
                 type="monotone"
                 dataKey="win_rate"
@@ -138,7 +187,7 @@ export function MasteryCurveView({ masteryChampionCurves, pabuThreshold }: Props
                 activeDot={{ r: 6 }}
                 name="Win Rate"
               />
-            </LineChart>
+            </ComposedChart>
           </ResponsiveContainer>
         </Box>
       )}

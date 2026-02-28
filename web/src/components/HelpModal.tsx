@@ -125,8 +125,9 @@ export function HelpModal({ open, onClose }: Props) {
           <P>
             <strong>Mastery Curve</strong> — An interactive per-champion line chart showing win rate
             across mastery intervals (0–1k, 1k–2k, 2k–5k, … 1M+). Select a champion to see how
-            their win rate evolves as players invest more time. Requires a minimum sample size per
-            interval.
+            their win rate evolves as players invest more time. A shaded band around the line shows
+            the 95% Wilson confidence interval — wider bands indicate intervals with fewer games.
+            Hover a data point to see the exact CI range. Requires a minimum sample size per interval.
           </P>
         </Section>
 
@@ -318,6 +319,12 @@ export function HelpModal({ open, onClose }: Props) {
           <P>
             Early Slope = win rate gain across the first 3 mastery brackets (5k–50k points, roughly
             the first 70 games). Drives the Pickup tier label.
+          </P>
+          <P>
+            <strong>Uncertain tiers:</strong> When a champion's Early Slope is close to a tier
+            boundary, a 95% Wilson confidence interval is computed from the bracket sample sizes. If
+            the CI spans the boundary, the Pickup chip appears faded with a "?" suffix — the tier
+            is statistically plausible but not definitive. Hover the chip to see the ±CI value.
           </P>
           <Typography variant="subtitle2" gutterBottom fontWeight="bold" sx={{ mt: 1 }}>
             Growth Tier (Late Slope)

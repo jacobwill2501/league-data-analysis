@@ -9,6 +9,7 @@ import argparse
 import datetime
 import json
 import logging
+import math
 import os
 import sys
 import time
@@ -72,6 +73,20 @@ MASTERY_PER_GAME = 700
 SLOPE_MIN_MASTERY = 3500   # Skip 1–5 games band (selection bias dominated)
 SLOPE_MIN_GAMES   = 200    # Stricter sample threshold for slope vs. 100 for visualization
 SLOPE_PLATEAU_THRESHOLD = 0.5  # pp — WR within this of peak counts as "plateaued"
+
+
+def _wilson_ci(wins: int, n: int, z: float = 1.96):
+    """Wilson score confidence interval for a binomial proportion.
+
+    Returns (ci_lower, ci_upper) as proportions, or (None, None) if n == 0.
+    """
+    if n == 0:
+        return None, None
+    p = wins / n
+    denom = 1 + z**2 / n
+    center = (p + z**2 / (2 * n)) / denom
+    margin = (z * math.sqrt(p * (1 - p) / n + z**2 / (4 * n**2))) / denom
+    return center - margin, center + margin
 
 
 def _slope_tier(early_slope):
@@ -564,12 +579,15 @@ class MasteryAnalyzer:
                 if s is None or s['games'] < MINIMUM_SAMPLE_SIZE:
                     continue
 
+                ci_lo, ci_hi = _wilson_ci(s['wins'], s['games'])
                 interval_list.append({
                     'label': label,
                     'min': lo,
                     'max': hi if hi != float('inf') else None,
                     'win_rate': s['wins'] / s['games'],
                     'games': s['games'],
+                    'ci_lower': round(ci_lo, 4) if ci_lo is not None else None,
+                    'ci_upper': round(ci_hi, 4) if ci_hi is not None else None,
                 })
 
             if interval_list:
@@ -645,6 +663,13 @@ class MasteryAnalyzer:
             early_end   = min(3, len(smoothed) - 1)
             early_slope = (smoothed[early_end] - smoothed[0]) * 100
 
+            # Approximate 95% CI for early slope using SE of boundary intervals' win rates
+            iv0 = slope_ivs[0]
+            iv2 = slope_ivs[min(2, len(slope_ivs) - 1)]
+            se0 = iv0['win_rate'] * (1 - iv0['win_rate']) / iv0['games']
+            se2 = iv2['win_rate'] * (1 - iv2['win_rate']) / iv2['games']
+            early_slope_ci = round(1.96 * math.sqrt(se0 + se2) * 100, 2)
+
             # Late slope: gain across last 3 intervals (Autonomous phase, 100k–end of data)
             # Only computed when there are enough intervals for early and late not to overlap.
             late_slope = None
@@ -669,6 +694,7 @@ class MasteryAnalyzer:
                 'peak_wr': round(peak_wr, 4),
                 'total_slope': round(total_slope, 2),
                 'early_slope': round(early_slope, 2),
+                'early_slope_ci': early_slope_ci,
                 'late_slope': round(late_slope, 2) if late_slope is not None else None,
                 'inflection_mastery': inflection_mastery,
                 'inflection_games': inflection_games,

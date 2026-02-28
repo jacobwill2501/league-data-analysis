@@ -292,10 +292,10 @@ export function SlopeIterationsView({ data, masteryChampionCurves }: Props) {
   })
 
   const COLUMN_TOOLTIPS: Record<string, string> = {
-    slope_tier:         'Early-mastery difficulty. Based on win rate gain in the first 3 game brackets (5–100 games). Higher = more punishing to play before you\'ve learned the champion.',
+    slope_tier:         'Early-mastery difficulty. Based on win rate gain in the first 3 mastery brackets. A faded chip with "?" means the 95% confidence interval spans a tier boundary — treat the tier as approximate.',
     growth_type:        'Whether the champion keeps improving at high mastery. Plateau = WR levels off after competency. Gradual = slow continued gains. Continual = still growing significantly at 200+ games.',
     curve:              'Win rate progression across game brackets (5+ games only — matches the range used for all slope metrics). Color matches Pickup tier. Dashed line = 50% WR.',
-    early_slope:        'Win rate gain across the first 3 game brackets (5–100 games). Positive = champion gets better with early practice. Drives the Pickup tier label.',
+    early_slope:        'Win rate gain across the first 3 mastery brackets (~5k–50k points). Drives the Pickup tier. A 95% confidence interval (±CI) is computed from sample sizes — wide CI on a champion near a tier boundary will show a faded "?" chip.',
     late_slope:         'Win rate gain across the last 3 mastery brackets (100k to end of available data). Positive = champion rewards deep mastery investment. Drives the Growth tier label.',
     total_slope:        'Total win rate gain from starting mastery to peak mastery (percentage points). Smoothed to reduce noise from low-sample brackets.',
 
@@ -374,16 +374,28 @@ export function SlopeIterationsView({ data, masteryChampionCurves }: Props) {
 
                 if (colId === 'slope_tier') {
                   const tier = rawValue as string | null
+                  const es = cell.row.original.early_slope
+                  const ci = cell.row.original.early_slope_ci
+                  const BOUNDARIES = [2, 5, 8]
+                  const isUncertain = ci != null && es != null &&
+                    BOUNDARIES.some(b => es - ci < b && es + ci > b)
                   return (
                     <TableCell key={cell.id} sx={{ whiteSpace: 'nowrap' }}>
                       {tier ? (
-                        <Chip
-                          label={tier}
-                          color={SLOPE_TIER_COLOR[tier] ?? 'default'}
-                          size="small"
-                          variant="outlined"
-                          sx={{ fontSize: 11 }}
-                        />
+                        <Tooltip
+                          title={isUncertain ? `Tier boundary uncertain — 95% CI: ±${ci?.toFixed(1)}pp` : ''}
+                          placement="top"
+                          arrow
+                          disableHoverListener={!isUncertain}
+                        >
+                          <Chip
+                            label={isUncertain ? `${tier} ?` : tier}
+                            color={SLOPE_TIER_COLOR[tier] ?? 'default'}
+                            size="small"
+                            variant="outlined"
+                            sx={{ fontSize: 11, opacity: isUncertain ? 0.6 : 1 }}
+                          />
+                        </Tooltip>
                       ) : <>—</>}
                     </TableCell>
                   )

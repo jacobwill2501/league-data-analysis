@@ -191,6 +191,8 @@ python3 src/analyze.py --filter emerald_plus
 **`growth_type` thresholds** (late slope, pp):
 - Plateau < 0.5, Gradual 0.5–1.5, Continual ≥ 1.5
 
+**Confidence intervals:** Each mastery curve interval includes `ci_lower`/`ci_upper` (95% Wilson score CI). Slope iterations include `early_slope_ci` (approximate ±CI in pp, derived from SE of boundary intervals). When early slope ± CI spans a tier boundary, the Pickup chip is faded with "?" in the UI.
+
 ## Analysis Outputs
 
 Per elo filter, `analyze.py` produces JSON with:
@@ -202,7 +204,8 @@ Per elo filter, `analyze.py` produces JSON with:
 - **lane_impact** — average mastery ratios by lane
 - **easiest_to_learn** — champions sorted by low_ratio descending
 - **best_to_master** — champions sorted by high_ratio descending
-- **slope_iterations** — per-champion learning curve signals: `early_slope`, `late_slope`, `total_slope`, `slope_tier`, `growth_type`, `inflection_mastery`, `inflection_games`, `initial_wr`, `peak_wr`, `valid_intervals`
+- **slope_iterations** — per-champion learning curve signals: `early_slope`, `early_slope_ci`, `late_slope`, `total_slope`, `slope_tier`, `growth_type`, `inflection_mastery`, `inflection_games`, `initial_wr`, `peak_wr`, `valid_intervals`
+- **mastery_curves** — per-champion interval lists, each with `win_rate`, `games`, `ci_lower`, `ci_upper`
 
 ### Verification Checks (run during analysis)
 

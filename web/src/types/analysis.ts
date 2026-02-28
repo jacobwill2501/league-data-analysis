@@ -42,6 +42,8 @@ export interface MasteryInterval {
   max: number | null
   win_rate: number
   games: number
+  ci_lower?: number | null
+  ci_upper?: number | null
 }
 
 export interface MasteryChampionCurve {
@@ -62,6 +64,7 @@ export interface SlopeIterationStat {
   peak_wr: number | null
   total_slope: number | null
   early_slope: number | null
+  early_slope_ci?: number | null
   late_slope: number | null
   inflection_mastery: number | null
   inflection_games: number | null

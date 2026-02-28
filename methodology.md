@@ -172,6 +172,21 @@ Intervals must satisfy:
 
 At least 3 qualifying intervals are required to produce any metrics.
 
+### Confidence Intervals
+
+Two types of 95% Wilson score confidence intervals are computed and stored in the JSON output:
+
+**Per-interval CI (`ci_lower`, `ci_upper`)** — each mastery curve interval stores Wilson CIs around the observed win rate. The Wilson interval is preferred over the normal approximation because it is bounded in [0, 1] and performs better at proportions far from 0.5. These are emitted into `mastery_curves[champion].intervals[*]` and displayed as a shaded band in the Mastery Curve chart.
+
+**Early slope CI (`early_slope_ci`)** — an approximate 95% CI for the early slope (in percentage points), derived by propagating the standard errors of the boundary intervals:
+
+```
+SE = sqrt(p0*(1−p0)/n0 + p2*(1−p2)/n2)
+early_slope_ci = 1.96 × SE × 100
+```
+
+where `iv0` and `iv2` are the first and third qualifying slope intervals. When the early slope ± CI spans a tier boundary (2, 5, or 8 pp), the Pickup tier chip in the Slope Iterations view is displayed faded with a "?" suffix to indicate statistical ambiguity.
+
 ## Key Limitations
 
 1. **Mastery is current, not historical.** The Champion-Mastery-v4 endpoint returns a player's mastery at the time of the API call, not at the time the match was played. A player who had 50k mastery during a match but has since climbed to 200k will be recorded at 200k. This biases mastery values upward for older matches and blurs the relationship somewhat. Restricting to recent patches (the `--patches current` filter) mitigates this by narrowing the time gap.
