@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createTheme, ThemeProvider, CssBaseline } from '@mui/material'
 import Box from '@mui/material/Box'
 import CircularProgress from '@mui/material/CircularProgress'
@@ -58,6 +58,22 @@ export function App() {
   })
   const [search, setSearch] = useState('')
   const [lane, setLane] = useState('ALL')
+  const [hideRarePicks, setHideRarePicks] = useState(true)
+
+  // Sync view state when the user presses the browser back/forward button
+  useEffect(() => {
+    const VALID_VIEWS: ViewMode[] = [
+      'easiest_to_learn', 'best_to_master', 'mastery_curve', 'all_stats',
+      'pabu_easiest_to_learn', 'pabu_best_to_master', 'pabu_mastery_curve', 'slope_iterations',
+    ]
+    const onPopState = () => {
+      const param = new URLSearchParams(window.location.search).get('view')
+      const next = VALID_VIEWS.includes(param as ViewMode) ? (param as ViewMode) : 'easiest_to_learn'
+      setView(next)
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
 
   const { data, loading, error } = useAnalysisData(elo)
 
@@ -97,18 +113,31 @@ export function App() {
   const filteredChampions = useMemo((): ChampionStat[] => {
     if (view === 'mastery_curve' || view === 'pabu_mastery_curve' || view === 'slope_iterations') return []
 
-    // When a specific lane is selected, use per-lane rows so flex picks appear in every
-    // lane they're played in (not just their most_common_lane).
-    if (lane !== 'ALL' && laneRows.length > 0) {
-      let rows = laneRows.filter(r => getLaneDisplay(r.most_common_lane) === lane)
+    const isRankedView = view === 'easiest_to_learn' || view === 'best_to_master'
+                      || view === 'pabu_easiest_to_learn' || view === 'pabu_best_to_master'
+    const rarePickThreshold = (data?.summary?.total_unique_players ?? 0) * 0.005
+
+    // easiest_to_learn/pabu views rely on estimated_games/status/starting_winrate which
+    // aren't computed per-lane — always filter the pooled sourceRows for these views.
+    const isG50View = view === 'easiest_to_learn' || view === 'pabu_easiest_to_learn'
+
+    const filteredSourceRows = isRankedView && hideRarePicks
+      ? sourceRows.filter(r => (r.medium_games ?? 0) >= rarePickThreshold)
+      : sourceRows
+    const filteredLaneRows = isRankedView && hideRarePicks
+      ? laneRows.filter(r => (r.medium_games ?? 0) >= rarePickThreshold)
+      : laneRows
+
+    // When a specific lane is selected (and not a g50 view), use per-lane rows so flex
+    // picks appear in every lane they're played in (not just their most_common_lane).
+    if (lane !== 'ALL' && laneRows.length > 0 && !isG50View) {
+      let rows = filteredLaneRows.filter(r => getLaneDisplay(r.most_common_lane) === lane)
       if (search.trim()) {
         const q = search.trim().toLowerCase()
         rows = rows.filter(r => r.champion.toLowerCase().includes(q))
       }
       // Sort appropriately since per-lane rows aren't pre-sorted by the backend
-      if (view === 'easiest_to_learn' || view === 'pabu_easiest_to_learn') {
-        rows = [...rows].sort((a, b) => (b.learning_score ?? -Infinity) - (a.learning_score ?? -Infinity))
-      } else if (view === 'best_to_master' || view === 'pabu_best_to_master') {
+      if (view === 'best_to_master' || view === 'pabu_best_to_master') {
         rows = [...rows].sort((a, b) => (b.mastery_score ?? -Infinity) - (a.mastery_score ?? -Infinity))
       } else {
         rows = [...rows].sort((a, b) => a.champion.localeCompare(b.champion))
@@ -116,14 +145,17 @@ export function App() {
       return rows
     }
 
-    // ALL lanes: existing behavior (pooled, one row per champion)
-    let rows = sourceRows
+    // ALL lanes or g50 views: use pooled sourceRows, optionally filtered by lane
+    let rows = filteredSourceRows
+    if (lane !== 'ALL') {
+      rows = rows.filter(r => getLaneDisplay(r.most_common_lane) === lane)
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       rows = rows.filter(r => r.champion.toLowerCase().includes(q))
     }
     return rows
-  }, [sourceRows, laneRows, search, lane, view])
+  }, [sourceRows, laneRows, search, lane, view, hideRarePicks, data])
 
   const filteredSlope = useMemo((): SlopeIterationStat[] => {
     if (view !== 'slope_iterations' || !data) return []
@@ -154,7 +186,8 @@ export function App() {
     params.set('champion', champion)
     if (lane) params.set('lane', lane)
     else params.delete('lane')
-    window.history.replaceState(null, '', `?${params.toString()}`)
+    // pushState so the browser back button returns to the previous view
+    window.history.pushState(null, '', `?${params.toString()}`)
     setView('mastery_curve')
   }
 
@@ -185,6 +218,8 @@ export function App() {
           onLaneChange={setLane}
           rowCount={rowCount}
           totalCount={totalCount}
+          hideRarePicks={hideRarePicks}
+          onHideRarePicksChange={setHideRarePicks}
         />
 
         <Box component="main" sx={{ flex: 1 }}>

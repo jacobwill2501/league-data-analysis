@@ -1,12 +1,15 @@
 import Box from '@mui/material/Box'
+import Checkbox from '@mui/material/Checkbox'
 import FormControl from '@mui/material/FormControl'
+import FormControlLabel from '@mui/material/FormControlLabel'
 import InputLabel from '@mui/material/InputLabel'
-import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
+import Select from '@mui/material/Select'
 import TextField from '@mui/material/TextField'
-import Typography from '@mui/material/Typography'
-import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
+import Tooltip from '@mui/material/Tooltip'
 import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
+import Typography from '@mui/material/Typography'
 import type { ViewMode } from '../types/analysis'
 
 const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
@@ -36,6 +39,8 @@ interface Props {
   onLaneChange: (l: string) => void
   rowCount: number
   totalCount: number
+  hideRarePicks?: boolean
+  onHideRarePicksChange?: (v: boolean) => void
 }
 
 export function TableControls({
@@ -47,6 +52,8 @@ export function TableControls({
   onLaneChange,
   rowCount,
   totalCount,
+  hideRarePicks,
+  onHideRarePicksChange,
 }: Props) {
   return (
     <Box
@@ -119,6 +126,29 @@ export function TableControls({
           ))}
         </Select>
       </FormControl>
+
+      {/* Rare picks filter — only shown for ranked views */}
+      {(view === 'easiest_to_learn' || view === 'best_to_master'
+        || view === 'pabu_easiest_to_learn' || view === 'pabu_best_to_master')
+        && onHideRarePicksChange != null && (
+        <Tooltip
+          title="Excludes champions with <0.5% play rate in the medium mastery bucket. These have small sample sizes and can distort rankings."
+          placement="top"
+          arrow
+        >
+          <FormControlLabel
+            control={
+              <Checkbox
+                size="small"
+                checked={!hideRarePicks}
+                onChange={e => onHideRarePicksChange(!e.target.checked)}
+              />
+            }
+            label="Include rare picks"
+            sx={{ m: 0, userSelect: 'none' }}
+          />
+        </Tooltip>
+      )}
 
       <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto' }}>
         Showing {rowCount.toLocaleString()} of {totalCount.toLocaleString()}

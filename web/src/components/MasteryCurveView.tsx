@@ -20,11 +20,9 @@ import type { LaneCurve, MasteryChampionCurve, MasteryInterval } from '../types/
 import { useTheme } from '@mui/material/styles'
 import { fmtLane } from '../utils/format'
 
-const getMid = (iv: MasteryInterval): number => {
-  if (iv.min === 0) return 500
-  if (iv.max === null) return iv.min * 1.5
-  return (iv.min + iv.max) / 2
-}
+// Use ordinal index as X position so every interval gets equal visual spacing.
+// A log scale created a disproportionately large gap between the first two
+// intervals because both span 5× the mastery range vs 2× for later intervals.
 
 interface Props {
   masteryChampionCurves: Record<string, MasteryChampionCurve>
@@ -106,9 +104,9 @@ export function MasteryCurveView({ masteryChampionCurves, masteryChampionCurvesB
     return masteryChampionCurves[selectedChamp] ?? null
   }, [selectedChamp, selectedLane, masteryChampionCurves, masteryChampionCurvesByLane])
 
-  const chartData = curveData ? curveData.intervals.map(iv => ({
+  const chartData = curveData ? curveData.intervals.map((iv, idx) => ({
     ...iv,
-    mid: getMid(iv),
+    mid: idx,
     ci_upper: iv.ci_upper ?? null,
     ci_lower: iv.ci_lower ?? null,
   })) : []
@@ -199,11 +197,10 @@ export function MasteryCurveView({ masteryChampionCurves, masteryChampionCurvesB
               <XAxis
                 type="number"
                 dataKey="mid"
-                scale="log"
-                domain={['auto', 'auto']}
+                domain={[-0.5, chartData.length - 0.5]}
                 ticks={chartData.map(d => d.mid)}
                 tick={<AngledTick />}
-                label={{ value: 'Mastery Points', position: 'insideBottom', offset: -35, fontSize: 12, fill: theme.palette.text.secondary }}
+                label={{ value: 'Experience Bracket', position: 'insideBottom', offset: -35, fontSize: 12, fill: theme.palette.text.secondary }}
               />
               <YAxis
                 domain={yDomain}
