@@ -84,7 +84,7 @@ export function TableControls({
           ))}
         </ToggleButtonGroup>
 
-        <FormControl size="small" sx={{ minWidth: 160 }}>
+        <FormControl size="small" sx={{ minWidth: { xs: 0, sm: 160 }, width: { xs: '100%', sm: 'auto' } }}>
           <Select
             displayEmpty
             value={BETA_VIEW_VALUES.includes(view) ? view : ''}
@@ -112,11 +112,11 @@ export function TableControls({
         label="Search champion"
         value={search}
         onChange={e => onSearchChange(e.target.value)}
-        sx={{ width: 160 }}
+        sx={{ width: { xs: '100%', sm: 160 } }}
       />
 
       {/* Lane filter */}
-      <FormControl size="small" sx={{ minWidth: 110 }}>
+      <FormControl size="small" sx={{ minWidth: { xs: 0, sm: 110 }, width: { xs: '100%', sm: 'auto' } }}>
         <InputLabel>Lane</InputLabel>
         <Select value={lane} label="Lane" onChange={e => onLaneChange(e.target.value)}>
           {LANE_OPTIONS.map(l => (

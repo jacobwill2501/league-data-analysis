@@ -41,7 +41,7 @@ export function Header({ elo, onEloChange, mode, onModeToggle, summary, generate
   return (
     <>
       <AppBar position="sticky" color="default" elevation={1}>
-        <Toolbar variant="dense" sx={{ gap: 2, flexWrap: 'wrap' }}>
+        <Toolbar variant="dense" sx={{ gap: 2, flexWrap: 'wrap', px: { xs: 1, sm: 2 } }}>
           <Typography variant="h6" fontWeight="bold" sx={{ flexShrink: 0 }}>
             Champion Mastery Analysis
           </Typography>

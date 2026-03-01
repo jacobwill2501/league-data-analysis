@@ -345,7 +345,7 @@ export function SlopeIterationsView({ data, masteryChampionCurves, dataByLane, m
   return (
     <>
     {availableLanes.length > 1 && (
-      <Box sx={{ px: 2, pt: 1.5, pb: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+      <Box sx={{ px: { xs: 1, sm: 2 }, pt: 1.5, pb: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}>
         <ToggleButtonGroup
           value={laneSel}
           exclusive
@@ -364,6 +364,7 @@ export function SlopeIterationsView({ data, masteryChampionCurves, dataByLane, m
         )}
       </Box>
     )}
+    <Box sx={{ overflowX: 'auto', width: '100%' }}>
     <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 0 }}>
       <Table size="small" stickyHeader>
         <TableHead>
@@ -550,6 +551,7 @@ export function SlopeIterationsView({ data, masteryChampionCurves, dataByLane, m
         </Box>
       )}
     </TableContainer>
+    </Box>
     </>
   )
 }

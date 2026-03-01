@@ -211,6 +211,7 @@ function SortableTable<T extends object>({ data, columns, view }: TableProps<T>)
   })
 
   return (
+    <Box sx={{ overflowX: 'auto', width: '100%' }}>
     <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 0 }}>
       <Table size="small" stickyHeader>
         <TableHead>
@@ -272,6 +273,7 @@ function SortableTable<T extends object>({ data, columns, view }: TableProps<T>)
         </Box>
       )}
     </TableContainer>
+    </Box>
   )
 }
 

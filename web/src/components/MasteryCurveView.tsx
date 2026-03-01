@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import useMediaQuery from '@mui/material/useMediaQuery'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Autocomplete from '@mui/material/Autocomplete'
@@ -59,6 +60,7 @@ export function MasteryCurveView({ masteryChampionCurves, masteryChampionCurvesB
     return new URLSearchParams(window.location.search).get('lane') ?? 'ALL'
   })
   const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
   const isMounted = useRef(false)
 
   // Reset lane selection when champion changes (user-initiated via autocomplete).
@@ -145,14 +147,14 @@ export function MasteryCurveView({ masteryChampionCurves, masteryChampionCurvesB
   const ciColor = theme.palette.primary.main
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: { xs: 1.5, sm: 3 } }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', mb: 3 }}>
         <Autocomplete
           options={championNames}
           value={selectedChamp}
           onChange={(_, v) => setSelectedChamp(v)}
           renderInput={params => <TextField {...params} label="Select Champion" size="small" />}
-          sx={{ width: 260 }}
+          sx={{ width: { xs: '100%', sm: 260 } }}
         />
 
         {availableLanes.length > 1 && (
@@ -192,7 +194,7 @@ export function MasteryCurveView({ masteryChampionCurves, masteryChampionCurvesB
             </Typography>
           )}
           <ResponsiveContainer width="100%" height={400}>
-            <ComposedChart data={chartData} margin={{ top: 10, right: 40, left: 10, bottom: 60 }}>
+            <ComposedChart data={chartData} margin={{ top: 10, right: isMobile ? 16 : 40, left: 10, bottom: isMobile ? 48 : 60 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
               <XAxis
                 type="number"
