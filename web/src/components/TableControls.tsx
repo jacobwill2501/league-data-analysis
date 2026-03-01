@@ -129,7 +129,8 @@ export function TableControls({
 
       {/* Rare picks filter — only shown for ranked views */}
       {(view === 'easiest_to_learn' || view === 'best_to_master'
-        || view === 'pabu_easiest_to_learn' || view === 'pabu_best_to_master')
+        || view === 'pabu_easiest_to_learn' || view === 'pabu_best_to_master'
+        || view === 'slope_iterations')
         && onHideRarePicksChange != null && (
         <Tooltip
           title="Excludes champions with <0.5% play rate in the medium mastery bucket. These have small sample sizes and can distort rankings."

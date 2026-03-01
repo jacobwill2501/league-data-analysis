@@ -159,7 +159,13 @@ export function App() {
 
   const filteredSlope = useMemo((): SlopeIterationStat[] => {
     if (view !== 'slope_iterations' || !data) return []
-    let rows = data.slopeIterations
+
+    const rarePickThreshold = (data.summary?.total_unique_players ?? 0) * 0.005
+    const mediumGamesMap = new Map(data.champions.map(c => [c.champion, c.medium_games]))
+
+    let rows = hideRarePicks
+      ? data.slopeIterations.filter(r => (mediumGamesMap.get(r.champion) ?? 0) >= rarePickThreshold)
+      : data.slopeIterations
 
     if (search.trim()) {
       const q = search.trim().toLowerCase()
@@ -171,7 +177,7 @@ export function App() {
     }
 
     return rows
-  }, [data, view, search, lane])
+  }, [data, view, search, lane, hideRarePicks])
 
   const handleViewChange = (newView: ViewMode) => {
     setView(newView)
