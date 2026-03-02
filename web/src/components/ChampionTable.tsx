@@ -233,6 +233,7 @@ function renderCell(colId: string, rawValue: unknown, formattedNode: React.React
 
   if (colId === 'late_slope') {
     const raw = rawValue as number | null
+    // Dead zone (-1pp to 0): renders neutral to avoid flagging statistical noise at high mastery
     const color =
       raw == null ? 'text.primary'
       : raw > 0   ? 'success.main'
