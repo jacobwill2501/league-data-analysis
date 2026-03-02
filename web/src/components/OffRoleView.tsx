@@ -60,10 +60,10 @@ export function OffRoleView({ data, dataByLane, g50Map }: Props) {
   )
 
   const activeData: SlopeIterationStat[] = useMemo(() => {
-    if (laneSel !== 'ALL' && dataByLane) {
-      return dataByLane.filter(r => r.lane === laneSel)
-    }
-    return data
+    const rows = (laneSel !== 'ALL' && dataByLane)
+      ? dataByLane.filter(r => r.lane === laneSel)
+      : data
+    return rows.filter(r => r.initial_wr != null)
   }, [laneSel, dataByLane, data])
 
   const columns = useMemo((): ColumnDef<SlopeIterationStat>[] => [

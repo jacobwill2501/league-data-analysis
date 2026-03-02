@@ -182,10 +182,10 @@ export function SlopeIterationsView({ data, masteryChampionCurves, dataByLane, m
   )
 
   const activeData: SlopeIterationStat[] = useMemo(() => {
-    if (laneSel !== 'ALL' && dataByLane) {
-      return dataByLane.filter(r => r.lane === laneSel)
-    }
-    return data
+    const rows = (laneSel !== 'ALL' && dataByLane)
+      ? dataByLane.filter(r => r.lane === laneSel)
+      : data
+    return rows.filter(r => r.slope_tier != null)
   }, [laneSel, dataByLane, data])
 
   const columns = useMemo((): ColumnDef<SlopeIterationStat>[] => [
