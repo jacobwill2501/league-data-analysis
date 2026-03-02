@@ -25,8 +25,8 @@ import ToggleButton from '@mui/material/ToggleButton'
 import { LineChart, Line, ReferenceLine, YAxis, Tooltip as RechartsTooltip } from 'recharts'
 import type { GameTo50Entry, LaneCurve, MasteryChampionCurve, SlopeIterationStat, SlopeIterationStatByLane } from '../types/analysis'
 import { ChampionIcon } from './ChampionIcon'
-import { fmtLane, fmtPct, nullLastSortingFn } from '../utils/format'
-import { SLOPE_TIER_CHIP_COLOR, SLOPE_TIER_LINE_COLOR, GROWTH_TYPE_CHIP_COLOR, GAMES_TO_50_STATUS_COLORS } from '../utils/tiers'
+import { fmtLane, fmtPct, nullLastSortingFn, makeTierSortingFn } from '../utils/format'
+import { SLOPE_TIER_CHIP_COLOR, SLOPE_TIER_LINE_COLOR, GROWTH_TYPE_CHIP_COLOR, GAMES_TO_50_STATUS_COLORS, SLOPE_TIER_ORDER, GROWTH_TYPE_ORDER } from '../utils/tiers'
 
 function SlopeSparkline({
   champion,
@@ -208,6 +208,7 @@ export function SlopeIterationsView({ data, masteryChampionCurves, dataByLane, m
       header: 'Pickup',
       accessorKey: 'slope_tier',
       enableSorting: true,
+      sortingFn: makeTierSortingFn(SLOPE_TIER_ORDER),
       cell: info => info.getValue<string | null>() ?? '—',
     },
     {
@@ -215,6 +216,7 @@ export function SlopeIterationsView({ data, masteryChampionCurves, dataByLane, m
       header: 'Growth',
       accessorKey: 'growth_type',
       enableSorting: true,
+      sortingFn: makeTierSortingFn(GROWTH_TYPE_ORDER),
       cell: info => info.getValue<string | null>() ?? '—',
     },
     {

@@ -24,8 +24,8 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import ToggleButton from '@mui/material/ToggleButton'
 import type { GameTo50Entry, SlopeIterationStat, SlopeIterationStatByLane } from '../types/analysis'
 import { ChampionIcon } from './ChampionIcon'
-import { fmtLane, fmtPct, nullLastSortingFn } from '../utils/format'
-import { ChipColor, SLOPE_TIER_CHIP_COLOR, GAMES_TO_50_STATUS_COLORS } from '../utils/tiers'
+import { fmtLane, fmtPct, nullLastSortingFn, makeTierSortingFn } from '../utils/format'
+import { ChipColor, SLOPE_TIER_CHIP_COLOR, GAMES_TO_50_STATUS_COLORS, SLOPE_TIER_ORDER } from '../utils/tiers'
 
 function wrColor(val: number | null): string {
   if (val === null || val === undefined) return 'text.primary'
@@ -93,6 +93,7 @@ export function OffRoleView({ data, dataByLane, g50Map }: Props) {
       header: 'Pickup',
       accessorKey: 'slope_tier',
       enableSorting: true,
+      sortingFn: makeTierSortingFn(SLOPE_TIER_ORDER),
       cell: info => {
         const tier = info.getValue<string | null>()
         return tier ? (

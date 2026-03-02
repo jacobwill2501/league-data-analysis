@@ -1,7 +1,8 @@
 import { type ColumnDef } from '@tanstack/react-table'
 import MuiTooltip from '@mui/material/Tooltip'
 import type { ChampionStat, ViewMode, SlopeIterationStat } from '../types/analysis'
-import { fmtPct, fmtRatio, fmtDelta, fmtScore, fmtLane, fmtGames, fmtThreshold, nullLastSortingFn } from './format'
+import { fmtPct, fmtRatio, fmtDelta, fmtScore, fmtLane, fmtGames, fmtThreshold, nullLastSortingFn, makeTierSortingFn } from './format'
+import { LEARNING_TIER_ORDER, MASTERY_TIER_ORDER, SLOPE_TIER_ORDER, GROWTH_TYPE_ORDER, GAMES_TO_50_STATUS_ORDER } from './tiers'
 
 // ── Shared champion columns ───────────────────────────────────────────────────
 
@@ -25,6 +26,7 @@ const learningTierCol: ColumnDef<ChampionStat> = {
   header: 'Learning Tier',
   accessorKey: 'learning_tier',
   cell: info => info.getValue<string | null>() ?? '—',
+  sortingFn: makeTierSortingFn(LEARNING_TIER_ORDER),
   enableSorting: true,
 }
 
@@ -33,6 +35,7 @@ const masteryTierCol: ColumnDef<ChampionStat> = {
   header: 'Mastery Tier',
   accessorKey: 'mastery_tier',
   cell: info => info.getValue<string | null>() ?? '—',
+  sortingFn: makeTierSortingFn(MASTERY_TIER_ORDER),
   enableSorting: true,
 }
 
@@ -70,6 +73,7 @@ export function getEasiestToLearnCols(
           ),
           accessorFn: (row: ChampionStat) => slopeMap.get(row.champion)?.slope_tier ?? null,
           cell: info => info.getValue<string | null>() ?? '—',
+          sortingFn: makeTierSortingFn(SLOPE_TIER_ORDER),
           enableSorting: true,
         },
         {
@@ -90,7 +94,7 @@ export function getEasiestToLearnCols(
     championCol,
     laneCol,
     ...enriched,
-    { id: 'status', header: 'Status', accessorKey: 'games_to_50_status', cell: info => info.getValue<string | null>() ?? '—', enableSorting: true },
+    { id: 'status', header: 'Status', accessorKey: 'games_to_50_status', cell: info => info.getValue<string | null>() ?? '—', sortingFn: makeTierSortingFn(GAMES_TO_50_STATUS_ORDER), enableSorting: true },
     estGamesChampCol,
     { id: 'mastery_threshold', header: 'Mastery Threshold', accessorKey: 'mastery_threshold', cell: info => fmtThreshold(info.getValue<number | null>()), enableSorting: true },
     {
@@ -121,6 +125,7 @@ export function getBestToMasterCols(
           ),
           accessorFn: (row: ChampionStat) => slopeMap.get(row.champion)?.growth_type ?? null,
           cell: info => info.getValue<string | null>() ?? '—',
+          sortingFn: makeTierSortingFn(GROWTH_TYPE_ORDER),
           enableSorting: true,
         },
         {
@@ -207,7 +212,7 @@ export function getPabuEasiestToLearnCols(): ColumnDef<ChampionStat>[] {
   return [
     championCol,
     laneCol,
-    { id: 'status', header: 'Status', accessorKey: 'games_to_50_status', cell: info => info.getValue<string | null>() ?? '—', enableSorting: true },
+    { id: 'status', header: 'Status', accessorKey: 'games_to_50_status', cell: info => info.getValue<string | null>() ?? '—', sortingFn: makeTierSortingFn(GAMES_TO_50_STATUS_ORDER), enableSorting: true },
     pabuEstGamesCol,
     { id: 'mastery_threshold', header: 'Mastery Threshold', accessorKey: 'mastery_threshold', cell: info => fmtThreshold(info.getValue<number | null>()), enableSorting: true },
     {

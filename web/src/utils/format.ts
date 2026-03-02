@@ -13,6 +13,21 @@ export function nullLastSortingFn<T extends object>(
   return a - b
 }
 
+export function makeTierSortingFn<T extends object>(
+  orderMap: Record<string, number>
+): (rowA: Row<T>, rowB: Row<T>, columnId: string) => number {
+  return (rowA, rowB, columnId) => {
+    const a = rowA.getValue<string | null>(columnId)
+    const b = rowB.getValue<string | null>(columnId)
+    if (a == null && b == null) return 0
+    if (a == null) return 1
+    if (b == null) return -1
+    const ai = orderMap[a] ?? 999
+    const bi = orderMap[b] ?? 999
+    return ai - bi
+  }
+}
+
 export function fmtPct(val: number | null | undefined): string {
   if (val === null || val === undefined) return '—'
   return (val * 100).toFixed(2) + '%'
