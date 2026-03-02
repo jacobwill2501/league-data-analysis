@@ -300,11 +300,7 @@ export function SlopeIterationsView({ data, masteryChampionCurves, dataByLane, m
     },
     {
       id: 'estimated_games',
-      header: () => (
-        <Tooltip title="Estimated games until win rate crosses 50%. From the Easiest to Learn analysis." placement="top" arrow>
-          <span>Est. Games to 50%</span>
-        </Tooltip>
-      ),
+      header: 'Est. Games to 50%',
       enableSorting: true,
       sortingFn: nullLastSortingFn,
       accessorFn: (row: SlopeIterationStat) => {
