@@ -156,3 +156,5 @@ export type ViewMode =
   | 'pabu_best_to_master'
   | 'pabu_mastery_curve'
   | 'slope_iterations'
+  | 'off_role'
+  | 'learning_profile'

@@ -202,4 +202,12 @@ export const VIEW_CONFIGS: Record<ViewMode, ViewConfig> = {
     label: 'Slope Iterations',
     defaultSort: { id: 'inflection_games', desc: false },
   },
+  off_role: {
+    label: 'Off-Role Picks',
+    defaultSort: { id: 'initial_wr', desc: true },
+  },
+  learning_profile: {
+    label: 'Learning Profile',
+    defaultSort: { id: 'champion', desc: false },
+  },
 }
