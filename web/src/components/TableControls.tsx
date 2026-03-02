@@ -16,6 +16,8 @@ const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
   { value: 'easiest_to_learn', label: 'Easiest to Learn' },
   { value: 'best_to_master',   label: 'Best to Master' },
   { value: 'slope_iterations', label: 'Slope Iterations' },
+  { value: 'off_role',         label: 'Off-Role Picks' },
+  { value: 'learning_profile', label: 'Learning Profile' },
   { value: 'mastery_curve',    label: 'Mastery Curve' },
   { value: 'all_stats',        label: 'All Stats' },
 ]
@@ -130,7 +132,8 @@ export function TableControls({
       {/* Rare picks filter — only shown for ranked views */}
       {(view === 'easiest_to_learn' || view === 'best_to_master'
         || view === 'pabu_easiest_to_learn' || view === 'pabu_best_to_master'
-        || view === 'slope_iterations')
+        || view === 'slope_iterations' || view === 'off_role'
+        || view === 'learning_profile')
         && onHideRarePicksChange != null && (
         <Tooltip
           title="Excludes champions with <0.5% play rate in the medium mastery bucket. These have small sample sizes and can distort rankings."
