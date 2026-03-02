@@ -8,11 +8,13 @@ import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
 import Brightness4Icon from '@mui/icons-material/Brightness4'
 import Brightness7Icon from '@mui/icons-material/Brightness7'
-import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
+import MenuBookIcon from '@mui/icons-material/MenuBook'
+import ScienceIcon from '@mui/icons-material/Science'
 import GitHubIcon from '@mui/icons-material/GitHub'
 import type { PaletteMode } from '@mui/material'
 import type { EloFilter } from '../types/analysis'
-import { HelpModal } from './HelpModal'
+import { UserGuideModal } from './UserGuideModal'
+import { MethodologyModal } from './MethodologyModal'
 
 function fmtCompact(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M'
@@ -36,7 +38,8 @@ interface Props {
 }
 
 export function Header({ elo, onEloChange, mode, onModeToggle, summary, generatedAt }: Props) {
-  const [helpOpen, setHelpOpen] = useState(false)
+  const [guideOpen, setGuideOpen] = useState(false)
+  const [methodologyOpen, setMethodologyOpen] = useState(false)
 
   return (
     <>
@@ -69,9 +72,15 @@ export function Header({ elo, onEloChange, mode, onModeToggle, summary, generate
             ))}
           </ToggleButtonGroup>
 
-          <Tooltip title="Help & methodology">
-            <IconButton onClick={() => setHelpOpen(true)} size="small">
-              <HelpOutlineIcon />
+          <Tooltip title="User Guide">
+            <IconButton onClick={() => setGuideOpen(true)} size="small">
+              <MenuBookIcon />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="Technical Methodology">
+            <IconButton onClick={() => setMethodologyOpen(true)} size="small">
+              <ScienceIcon />
             </IconButton>
           </Tooltip>
 
@@ -95,7 +104,8 @@ export function Header({ elo, onEloChange, mode, onModeToggle, summary, generate
         </Toolbar>
       </AppBar>
 
-      <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <UserGuideModal open={guideOpen} onClose={() => setGuideOpen(false)} />
+      <MethodologyModal open={methodologyOpen} onClose={() => setMethodologyOpen(false)} />
     </>
   )
 }
