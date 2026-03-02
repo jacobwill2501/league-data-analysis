@@ -263,7 +263,7 @@ export function App() {
                   />
                 : <ChampionTable
                     data={filteredChampions}
-                    view={view as Exclude<ViewMode, 'mastery_curve' | 'pabu_mastery_curve' | 'slope_iterations'>}
+                    view={view as Exclude<ViewMode, 'mastery_curve' | 'pabu_mastery_curve' | 'slope_iterations' | 'off_role' | 'learning_profile'>}
                   />
           )}
         </Box>

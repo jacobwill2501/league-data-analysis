@@ -1,6 +1,6 @@
 import { type ColumnDef } from '@tanstack/react-table'
 import MuiTooltip from '@mui/material/Tooltip'
-import type { ChampionStat, ViewMode } from '../types/analysis'
+import type { ChampionStat, ViewMode, SlopeIterationStat } from '../types/analysis'
 import { fmtPct, fmtRatio, fmtDelta, fmtScore, fmtLane, fmtGames, fmtThreshold } from './format'
 
 // ── Shared champion columns ───────────────────────────────────────────────────
@@ -60,10 +60,46 @@ const estGamesChampCol: ColumnDef<ChampionStat> = {
 
 // ── Standard view columns ─────────────────────────────────────────────────────
 
-export function getEasiestToLearnCols(): ColumnDef<ChampionStat>[] {
+function fmtSlope(val: number | null | undefined): string {
+  if (val === null || val === undefined) return '—'
+  const sign = val >= 0 ? '+' : ''
+  return `${sign}${val.toFixed(1)}pp`
+}
+
+export function getEasiestToLearnCols(
+  slopeMap?: Map<string, SlopeIterationStat>
+): ColumnDef<ChampionStat>[] {
+  const enriched: ColumnDef<ChampionStat>[] = slopeMap
+    ? [
+        {
+          id: 'slope_tier',
+          header: () => (
+            <MuiTooltip title="How steep is the early win-rate curve? Easy Pickup = competent quickly. Very Hard Pickup = steep penalty before you learn the basics.">
+              <span style={{ cursor: 'help', borderBottom: '1px dotted currentColor' }}>Pickup</span>
+            </MuiTooltip>
+          ),
+          accessorFn: (row: ChampionStat) => slopeMap.get(row.champion)?.slope_tier ?? null,
+          cell: info => info.getValue<string | null>() ?? '—',
+          enableSorting: true,
+        },
+        {
+          id: 'initial_wr',
+          header: () => (
+            <MuiTooltip title="Win rate in the 5–25 games bracket. Your floor — the worst you should expect to perform before you've learned the basics.">
+              <span style={{ cursor: 'help', borderBottom: '1px dotted currentColor' }}>Floor WR</span>
+            </MuiTooltip>
+          ),
+          accessorFn: (row: ChampionStat) => slopeMap.get(row.champion)?.initial_wr ?? null,
+          cell: info => fmtPct(info.getValue<number | null>()),
+          enableSorting: true,
+        },
+      ]
+    : []
+
   return [
     championCol,
     laneCol,
+    ...enriched,
     { id: 'status', header: 'Status', accessorKey: 'games_to_50_status', cell: info => info.getValue<string | null>() ?? '—', enableSorting: true },
     estGamesChampCol,
     { id: 'mastery_threshold', header: 'Mastery Threshold', accessorKey: 'mastery_threshold', cell: info => fmtThreshold(info.getValue<number | null>()), enableSorting: true },
@@ -81,7 +117,51 @@ export function getEasiestToLearnCols(): ColumnDef<ChampionStat>[] {
   ]
 }
 
-export function getBestToMasterCols(): ColumnDef<ChampionStat>[] {
+export function getBestToMasterCols(
+  slopeMap?: Map<string, SlopeIterationStat>
+): ColumnDef<ChampionStat>[] {
+  const enriched: ColumnDef<ChampionStat>[] = slopeMap
+    ? [
+        {
+          id: 'growth_type',
+          header: () => (
+            <MuiTooltip title="Does the champion keep rewarding mastery past the competency plateau? Continual = yes. Plateau = WR levels off after ~competency.">
+              <span style={{ cursor: 'help', borderBottom: '1px dotted currentColor' }}>Growth</span>
+            </MuiTooltip>
+          ),
+          accessorFn: (row: ChampionStat) => slopeMap.get(row.champion)?.growth_type ?? null,
+          cell: info => info.getValue<string | null>() ?? '—',
+          enableSorting: true,
+        },
+        {
+          id: 'late_slope',
+          header: () => (
+            <MuiTooltip title="Win rate gain across the last 3 mastery brackets (100k+ points). Positive = champion rewards deep mastery. Drives the Growth tier.">
+              <span style={{ cursor: 'help', borderBottom: '1px dotted currentColor' }}>Late Slope</span>
+            </MuiTooltip>
+          ),
+          accessorFn: (row: ChampionStat) => slopeMap.get(row.champion)?.late_slope ?? null,
+          cell: info => fmtSlope(info.getValue<number | null>()),
+          enableSorting: true,
+        },
+        {
+          id: 'inflection_games',
+          header: () => (
+            <MuiTooltip title="Estimated games until win rate reaches within 0.5pp of peak. Lower = you hit your ceiling faster.">
+              <span style={{ cursor: 'help', borderBottom: '1px dotted currentColor' }}>Games to Plateau</span>
+            </MuiTooltip>
+          ),
+          accessorFn: (row: ChampionStat) => slopeMap.get(row.champion)?.inflection_games ?? null,
+          cell: info => {
+            const v = info.getValue<number | null>()
+            return v == null ? '—' : fmtGames(v)
+          },
+          sortingFn: nullLastSortingFn,
+          enableSorting: true,
+        },
+      ]
+    : []
+
   return [
     championCol,
     laneCol,
@@ -92,6 +172,7 @@ export function getBestToMasterCols(): ColumnDef<ChampionStat>[] {
     { id: 'high_ratio', header: 'High Ratio', accessorKey: 'high_ratio', cell: i => fmtRatio(i.getValue<number | null>()), enableSorting: true },
     { id: 'delta', header: 'High Δ', accessorKey: 'delta', cell: i => fmtDelta(i.getValue<number | null>()), enableSorting: true },
     { id: 'high_games', header: 'High Games', accessorKey: 'high_games', cell: i => fmtGames(i.getValue<number | null>()), enableSorting: true },
+    ...enriched,
   ]
 }
 

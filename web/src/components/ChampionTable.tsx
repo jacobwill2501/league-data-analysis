@@ -19,7 +19,7 @@ import Chip from '@mui/material/Chip'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Tooltip from '@mui/material/Tooltip'
-import type { ChampionStat, ViewMode } from '../types/analysis'
+import type { ChampionStat, ViewMode, SlopeIterationStat } from '../types/analysis'
 import { ChampionIcon } from './ChampionIcon'
 import { fmtLane } from '../utils/format'
 import {
@@ -29,6 +29,7 @@ import {
   getPabuEasiestToLearnCols,
   VIEW_CONFIGS,
 } from '../utils/columns'
+import { SLOPE_TIER_CHIP_COLOR, GROWTH_TYPE_CHIP_COLOR } from '../utils/tiers'
 
 // ── Tier chip colors ──────────────────────────────────────────────────────────
 
@@ -189,6 +190,69 @@ function renderCell(colId: string, rawValue: unknown, formattedNode: React.React
     )
   }
 
+  if (colId === 'slope_tier') {
+    const str = rawValue as string | null
+    return str ? (
+      <Chip
+        label={str}
+        color={SLOPE_TIER_CHIP_COLOR[str] ?? 'default'}
+        size="small"
+        variant="outlined"
+        sx={{ fontSize: 11 }}
+      />
+    ) : <>—</>
+  }
+
+  if (colId === 'growth_type') {
+    const str = rawValue as string | null
+    return str ? (
+      <Chip
+        label={str}
+        color={GROWTH_TYPE_CHIP_COLOR[str] ?? 'default'}
+        size="small"
+        variant="outlined"
+        sx={{ fontSize: 11 }}
+      />
+    ) : <>—</>
+  }
+
+  if (colId === 'initial_wr') {
+    const raw = rawValue as number | null
+    const pct = raw != null ? raw * 100 : null
+    const color =
+      pct == null ? 'text.primary'
+      : pct < 48  ? 'error.main'
+      : pct > 52  ? 'success.main'
+      : 'text.primary'
+    return (
+      <Typography variant="body2" component="span" color={color} fontFamily="monospace">
+        {formattedNode}
+      </Typography>
+    )
+  }
+
+  if (colId === 'late_slope') {
+    const raw = rawValue as number | null
+    const color =
+      raw == null ? 'text.primary'
+      : raw > 0   ? 'success.main'
+      : raw < -1  ? 'error.main'
+      : 'text.primary'
+    return (
+      <Typography variant="body2" component="span" color={color} fontFamily="monospace">
+        {formattedNode}
+      </Typography>
+    )
+  }
+
+  if (colId === 'inflection_games') {
+    return (
+      <Typography variant="body2" component="span" fontFamily="monospace">
+        {formattedNode}
+      </Typography>
+    )
+  }
+
   // Default — return formattedNode directly (already a valid React node)
   return formattedNode
 }
@@ -281,14 +345,15 @@ function SortableTable<T extends object>({ data, columns, view }: TableProps<T>)
 
 interface ChampionTableProps {
   data: ChampionStat[]
-  view: Exclude<ViewMode, 'mastery_curve' | 'pabu_mastery_curve'>
+  view: Exclude<ViewMode, 'mastery_curve' | 'pabu_mastery_curve' | 'off_role' | 'learning_profile'>
+  slopeMap?: Map<string, SlopeIterationStat>
 }
 
-export function ChampionTable({ data, view }: ChampionTableProps) {
+export function ChampionTable({ data, view, slopeMap }: ChampionTableProps) {
   const cols =
-    view === 'easiest_to_learn'      ? getEasiestToLearnCols()
+    view === 'easiest_to_learn'        ? getEasiestToLearnCols(slopeMap)
     : view === 'pabu_easiest_to_learn' ? getPabuEasiestToLearnCols()
-    : view === 'best_to_master' || view === 'pabu_best_to_master' ? getBestToMasterCols()
+    : view === 'best_to_master' || view === 'pabu_best_to_master' ? getBestToMasterCols(slopeMap)
     : getAllStatsCols()
 
   return <SortableTable data={data} columns={cols as ColumnDef<ChampionStat>[]} view={view} />
