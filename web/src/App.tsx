@@ -176,9 +176,9 @@ export function App() {
 
     const rarePickThreshold = (data.summary?.total_unique_players ?? 0) * 0.005
 
-    let rows = hideRarePicks
-      ? data.slopeIterations.filter(r => (r.medium_games ?? 0) >= rarePickThreshold)
-      : data.slopeIterations
+    let rows = data.slopeIterations.filter(r => r.slope_tier != null)
+
+    if (hideRarePicks) rows = rows.filter(r => (r.medium_games ?? 0) >= rarePickThreshold)
 
     if (search.trim()) {
       const q = search.trim().toLowerCase()
@@ -196,9 +196,9 @@ export function App() {
     if (view !== 'off_role' || !data) return []
 
     const rarePickThreshold = (data.summary?.total_unique_players ?? 0) * 0.005
-    let rows = hideRarePicks
-      ? data.slopeIterations.filter(r => (r.medium_games ?? 0) >= rarePickThreshold)
-      : data.slopeIterations
+    let rows = data.slopeIterations.filter(r => r.initial_wr != null)
+
+    if (hideRarePicks) rows = rows.filter(r => (r.medium_games ?? 0) >= rarePickThreshold)
 
     if (search.trim()) {
       const q = search.trim().toLowerCase()
