@@ -1,7 +1,7 @@
 import { type ColumnDef } from '@tanstack/react-table'
 import MuiTooltip from '@mui/material/Tooltip'
 import type { ChampionStat, ViewMode, SlopeIterationStat } from '../types/analysis'
-import { fmtPct, fmtRatio, fmtDelta, fmtScore, fmtLane, fmtGames, fmtThreshold } from './format'
+import { fmtPct, fmtRatio, fmtDelta, fmtScore, fmtLane, fmtGames, fmtThreshold, nullLastSortingFn } from './format'
 
 // ── Shared champion columns ───────────────────────────────────────────────────
 
@@ -34,16 +34,6 @@ const masteryTierCol: ColumnDef<ChampionStat> = {
   accessorKey: 'mastery_tier',
   cell: info => info.getValue<string | null>() ?? '—',
   enableSorting: true,
-}
-
-const nullLastSortingFn = <T extends object>(
-  rowA: import('@tanstack/react-table').Row<T>,
-  rowB: import('@tanstack/react-table').Row<T>,
-  columnId: string,
-): number => {
-  const a = rowA.getValue<number | null>(columnId) ?? Infinity
-  const b = rowB.getValue<number | null>(columnId) ?? Infinity
-  return a - b
 }
 
 const estGamesChampCol: ColumnDef<ChampionStat> = {

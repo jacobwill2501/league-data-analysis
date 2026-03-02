@@ -17,7 +17,7 @@ import { SLOPE_TIER_LINE_COLOR } from '../utils/tiers'
 
 interface Props {
   data: SlopeIterationStat[]
-  rarePicks?: boolean
+  hideRarePicks?: boolean
   totalUniquePlayers?: number
   onNavigateToMasteryCurve?: (champion: string) => void
 }
@@ -148,7 +148,7 @@ const FALLBACK_COLOR = '#90CAF9'
 
 export function LearningProfileChart({
   data,
-  rarePicks,
+  hideRarePicks,
   totalUniquePlayers,
   onNavigateToMasteryCurve,
 }: Props) {
@@ -156,7 +156,7 @@ export function LearningProfileChart({
 
   const visiblePoints = useMemo((): PlotPoint[] => {
     const minMediumGames =
-      rarePicks === false && totalUniquePlayers != null
+      hideRarePicks === true && totalUniquePlayers != null
         ? totalUniquePlayers * 0.005
         : 0
 
@@ -190,7 +190,7 @@ export function LearningProfileChart({
         r: clamp(rawR, 4, 12),
       }
     })
-  }, [data, rarePicks, totalUniquePlayers])
+  }, [data, hideRarePicks, totalUniquePlayers])
 
   const medianInflection = useMemo(() => {
     const vals = visiblePoints.map((p) => p.inflection_games)

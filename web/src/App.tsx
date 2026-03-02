@@ -205,8 +205,12 @@ export function App() {
       rows = rows.filter(r => r.champion.toLowerCase().includes(q))
     }
 
+    if (lane !== 'ALL') {
+      rows = rows.filter(r => getLaneDisplay(r.most_common_lane) === lane)
+    }
+
     return rows
-  }, [data, view, search, hideRarePicks])
+  }, [data, view, search, lane, hideRarePicks])
 
   const handleViewChange = (newView: ViewMode) => {
     setView(newView)
@@ -304,7 +308,7 @@ export function App() {
             ) : isLearningProfile ? (
               <LearningProfileChart
                 data={data.slopeIterations}
-                rarePicks={hideRarePicks}
+                hideRarePicks={hideRarePicks}
                 totalUniquePlayers={data.summary?.total_unique_players}
                 onNavigateToMasteryCurve={(champion) => handleNavigateToMasteryCurve(champion, null)}
               />
