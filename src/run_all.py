@@ -16,8 +16,8 @@ def main():
         description='Run full analysis pipeline (analyze + export + visualize)')
     parser.add_argument('--filter', default='all',
                         help='Elo filter to process (default: all)')
-    parser.add_argument('--patches', choices=['current', 'last3'], default='last3',
-                        help='Patch range to include (default: last3)')
+    parser.add_argument('--patches', choices=['current', 'last3', 'season', 'all'], default='season',
+                        help='Patch range to include (default: season)')
     parser.add_argument('--verbose', action='store_true',
                         help='Enable debug logging')
 

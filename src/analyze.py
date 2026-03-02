@@ -1322,8 +1322,9 @@ def main():
     parser.add_argument('--filter', choices=list(ELO_FILTERS.keys()) + ['all'],
                         default='all',
                         help='Elo filter to analyze (default: all)')
-    parser.add_argument('--patches', choices=['current', 'last3', 'season'], default='season',
-                        help='Patch range to include (default: season — all S16 patches)')
+    parser.add_argument('--patches', choices=['current', 'last3', 'season', 'all'], default='season',
+                        help='Patch range to include (default: season — all S16 patches); '
+                             'use "all" to include every match in the database regardless of patch')
     parser.add_argument('--season', type=int, default=16,
                         help='Season number for --patches=season (default: 16)')
     parser.add_argument('--output', type=str, default='output/analysis',
@@ -1341,13 +1342,18 @@ def main():
 
     # Resolve patch filter
     patch_mgr = PatchManager()
-    if args.patches == 'current':
+    if args.patches == 'all':
+        patch_versions = None
+        logger.info("Patch filter: all (no restriction)")
+    elif args.patches == 'current':
         patch_versions = [patch_mgr.get_current_patch()]
+        logger.info(f"Patch filter: {patch_versions}")
     elif args.patches == 'season':
         patch_versions = patch_mgr.get_season_patches(args.season)
+        logger.info(f"Patch filter: {patch_versions}")
     else:
         patch_versions = patch_mgr.get_last_n_patches(3)
-    logger.info(f"Patch filter: {patch_versions}")
+        logger.info(f"Patch filter: {patch_versions}")
 
     filters = list(ELO_FILTERS.keys()) if args.filter == 'all' else [args.filter]
     logger.info(f"Processing {len(filters)} filter(s)")

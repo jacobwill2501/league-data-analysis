@@ -156,10 +156,11 @@ This deletes the matching players, clears their `collect_players` and `collect_m
 
 `run_all.py` and analysis/visualization/export scripts support:
 
-| Flag       | Description                                               |
-| ---------- | --------------------------------------------------------- |
-| `--filter` | `emerald_plus`, `diamond_plus`, `diamond2_plus`, or `all` |
-| `--patches` | `current` or `last3` (analyze/run_all only, default: last3) |
+| Flag        | Description                                                                                              |
+| ----------- | -------------------------------------------------------------------------------------------------------- |
+| `--filter`  | `emerald_plus`, `diamond_plus`, `diamond2_plus`, or `all`                                                |
+| `--patches` | `current`, `last3`, `season` (all patches for the given `--season`), or `all` (no patch filter — uses every match in the database); default: `season` |
+| `--season`  | Season number used with `--patches season` (default: `16`); `analyze.py` only                           |
 
 ## Elo Filters
 
