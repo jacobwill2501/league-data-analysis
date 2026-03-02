@@ -27,15 +27,7 @@ import { LineChart, Line, ReferenceLine, YAxis, Tooltip as RechartsTooltip } fro
 import type { LaneCurve, MasteryChampionCurve, SlopeIterationStat, SlopeIterationStatByLane } from '../types/analysis'
 import { ChampionIcon } from './ChampionIcon'
 import { fmtLane, fmtPct } from '../utils/format'
-
-type ChipColor = 'success' | 'warning' | 'error' | 'default' | 'info'
-
-const SLOPE_TIER_COLORS: Record<string, string> = {
-  'Easy Pickup':     '#66BB6A',
-  'Mild Pickup':     '#FFA726',
-  'Hard Pickup':     '#EF6C00',
-  'Very Hard Pickup': '#EF5350',
-}
+import { SLOPE_TIER_CHIP_COLOR, SLOPE_TIER_LINE_COLOR, GROWTH_TYPE_CHIP_COLOR } from '../utils/tiers'
 
 function SlopeSparkline({
   champion,
@@ -84,7 +76,7 @@ function SlopeSparkline({
     +Math.max(maxWr + pad, 50).toFixed(1),
   ]
 
-  const lineColor = SLOPE_TIER_COLORS[slopeTier ?? ''] ?? '#90CAF9'
+  const lineColor = SLOPE_TIER_LINE_COLOR[slopeTier ?? ''] ?? '#90CAF9'
 
   return (
     <>
@@ -147,19 +139,6 @@ function SlopeSparkline({
       )}
     </>
   )
-}
-
-const SLOPE_TIER_COLOR: Record<string, ChipColor> = {
-  'Easy Pickup':     'success',
-  'Mild Pickup':     'info',
-  'Hard Pickup':     'warning',
-  'Very Hard Pickup': 'error',
-}
-
-const GROWTH_TYPE_COLOR: Record<string, ChipColor> = {
-  'Plateau':   'default',
-  'Gradual':   'info',
-  'Continual': 'success',
 }
 
 function fmtSlope(val: number | null): string {
@@ -466,7 +445,7 @@ export function SlopeIterationsView({ data, masteryChampionCurves, dataByLane, m
                         >
                           <Chip
                             label={isUncertain ? `${tier} ?` : tier}
-                            color={SLOPE_TIER_COLOR[tier] ?? 'default'}
+                            color={SLOPE_TIER_CHIP_COLOR[tier] ?? 'default'}
                             size="small"
                             variant="outlined"
                             sx={{ fontSize: 11, opacity: isUncertain ? 0.6 : 1 }}
@@ -484,7 +463,7 @@ export function SlopeIterationsView({ data, masteryChampionCurves, dataByLane, m
                       {gt ? (
                         <Chip
                           label={gt}
-                          color={GROWTH_TYPE_COLOR[gt] ?? 'default'}
+                          color={GROWTH_TYPE_CHIP_COLOR[gt] ?? 'default'}
                           size="small"
                           variant="outlined"
                           sx={{ fontSize: 11 }}
