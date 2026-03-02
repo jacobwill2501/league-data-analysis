@@ -633,6 +633,12 @@ class MasteryAnalyzer:
             # Visualization-quality count (used in output for data-quality context)
             valid_intervals = len(intervals)
 
+            # Games played at medium mastery (10k–100k mastery points) for rare-pick filtering
+            medium_games = sum(
+                iv['games'] for iv in intervals
+                if MASTERY_BUCKETS['low']['max'] <= iv['min'] < MASTERY_BUCKETS['medium']['max']
+            )
+
             # Slope-specific filtered intervals: skip low-mastery noise bands,
             # require stricter sample threshold
             slope_ivs = [
@@ -655,6 +661,7 @@ class MasteryAnalyzer:
                     'slope_tier': None,
                     'growth_type': None,
                     'valid_intervals': valid_intervals,
+                    'medium_games': medium_games,
                 })
                 continue
 
@@ -711,6 +718,7 @@ class MasteryAnalyzer:
                 'slope_tier': _slope_tier(early_slope),
                 'growth_type': _growth_type(late_slope),
                 'valid_intervals': valid_intervals,
+                'medium_games': medium_games,
             })
 
         slope_tier_order = {
