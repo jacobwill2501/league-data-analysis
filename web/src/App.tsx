@@ -4,7 +4,7 @@ import Box from '@mui/material/Box'
 import CircularProgress from '@mui/material/CircularProgress'
 import Alert from '@mui/material/Alert'
 import Typography from '@mui/material/Typography'
-import type { ChampionStat, EloFilter, SlopeIterationStat, ViewMode } from './types/analysis'
+import type { ChampionStat, EloFilter, GameTo50Entry, SlopeIterationStat, ViewMode } from './types/analysis'
 import { useAnalysisData } from './hooks/useAnalysisData'
 import { useThemeMode } from './hooks/useTheme'
 import { Header } from './components/Header'
@@ -12,6 +12,8 @@ import { TableControls } from './components/TableControls'
 import { ChampionTable } from './components/ChampionTable'
 import { MasteryCurveView } from './components/MasteryCurveView'
 import { SlopeIterationsView } from './components/SlopeIterationsView'
+import { OffRoleView } from './components/OffRoleView'
+import { LearningProfileChart } from './components/LearningProfileChart'
 
 const LANE_MAP: Record<string, string> = {
   TOP: 'Top',
@@ -53,6 +55,7 @@ export function App() {
     const valid: ViewMode[] = [
       'easiest_to_learn', 'best_to_master', 'mastery_curve', 'all_stats',
       'pabu_easiest_to_learn', 'pabu_best_to_master', 'pabu_mastery_curve', 'slope_iterations',
+      'off_role', 'learning_profile',
     ]
     return valid.includes(param as ViewMode) ? (param as ViewMode) : 'easiest_to_learn'
   })
@@ -65,6 +68,7 @@ export function App() {
     const VALID_VIEWS: ViewMode[] = [
       'easiest_to_learn', 'best_to_master', 'mastery_curve', 'all_stats',
       'pabu_easiest_to_learn', 'pabu_best_to_master', 'pabu_mastery_curve', 'slope_iterations',
+      'off_role', 'learning_profile',
     ]
     const onPopState = () => {
       const param = new URLSearchParams(window.location.search).get('view')
@@ -76,6 +80,16 @@ export function App() {
   }, [])
 
   const { data, loading, error } = useAnalysisData(elo)
+
+  const slopeMap = useMemo(
+    () => !data ? new Map<string, SlopeIterationStat>() : new Map(data.slopeIterations.map(s => [s.champion, s])),
+    [data]
+  )
+
+  const g50Map = useMemo(
+    () => !data ? new Map<string, GameTo50Entry>() : new Map(data.gameTo50.map((e: GameTo50Entry) => [e.champion_name, e])),
+    [data]
+  )
 
   const sourceRows = useMemo((): ChampionStat[] => {
     if (!data) return []
@@ -111,7 +125,7 @@ export function App() {
   }, [data])
 
   const filteredChampions = useMemo((): ChampionStat[] => {
-    if (view === 'mastery_curve' || view === 'pabu_mastery_curve' || view === 'slope_iterations') return []
+    if (view === 'mastery_curve' || view === 'pabu_mastery_curve' || view === 'slope_iterations' || view === 'off_role' || view === 'learning_profile') return []
 
     const isRankedView = view === 'easiest_to_learn' || view === 'best_to_master'
                       || view === 'pabu_easiest_to_learn' || view === 'pabu_best_to_master'
@@ -161,10 +175,9 @@ export function App() {
     if (view !== 'slope_iterations' || !data) return []
 
     const rarePickThreshold = (data.summary?.total_unique_players ?? 0) * 0.005
-    const mediumGamesMap = new Map(data.champions.map(c => [c.champion, c.medium_games]))
 
     let rows = hideRarePicks
-      ? data.slopeIterations.filter(r => (mediumGamesMap.get(r.champion) ?? 0) >= rarePickThreshold)
+      ? data.slopeIterations.filter(r => (r.medium_games ?? 0) >= rarePickThreshold)
       : data.slopeIterations
 
     if (search.trim()) {
@@ -178,6 +191,22 @@ export function App() {
 
     return rows
   }, [data, view, search, lane, hideRarePicks])
+
+  const filteredOffRole = useMemo((): SlopeIterationStat[] => {
+    if (view !== 'off_role' || !data) return []
+
+    const rarePickThreshold = (data.summary?.total_unique_players ?? 0) * 0.005
+    let rows = hideRarePicks
+      ? data.slopeIterations.filter(r => (r.medium_games ?? 0) >= rarePickThreshold)
+      : data.slopeIterations
+
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      rows = rows.filter(r => r.champion.toLowerCase().includes(q))
+    }
+
+    return rows
+  }, [data, view, search, hideRarePicks])
 
   const handleViewChange = (newView: ViewMode) => {
     setView(newView)
@@ -199,8 +228,18 @@ export function App() {
 
   const isMasteryCurve = view === 'mastery_curve' || view === 'pabu_mastery_curve'
   const isSlopeView = view === 'slope_iterations'
-  const rowCount = isMasteryCurve ? 0 : isSlopeView ? filteredSlope.length : filteredChampions.length
-  const totalCount = isMasteryCurve ? 0 : isSlopeView ? (data?.slopeIterations.length ?? 0) : sourceRows.length
+  const isOffRole = view === 'off_role'
+  const isLearningProfile = view === 'learning_profile'
+
+  const rowCount = isMasteryCurve ? 0
+    : isSlopeView ? filteredSlope.length
+    : isOffRole ? filteredOffRole.length
+    : isLearningProfile ? (data?.slopeIterations.length ?? 0)
+    : filteredChampions.length
+
+  const totalCount = isMasteryCurve ? 0
+    : (isSlopeView || isOffRole || isLearningProfile) ? (data?.slopeIterations.length ?? 0)
+    : sourceRows.length
 
   return (
     <ThemeProvider theme={theme}>
@@ -247,24 +286,41 @@ export function App() {
           )}
 
           {!loading && !error && data && (
-            isSlopeView
-              ? <SlopeIterationsView
-                  data={filteredSlope}
-                  masteryChampionCurves={data.masteryChampionCurves}
-                  dataByLane={data.slopeIterationsByLane}
-                  masteryChampionCurvesByLane={data.masteryChampionCurvesByLane}
-                  onChampionClick={handleNavigateToMasteryCurve}
-                />
-              : isMasteryCurve
-                ? <MasteryCurveView
-                    masteryChampionCurves={data.masteryChampionCurves}
-                    masteryChampionCurvesByLane={data.masteryChampionCurvesByLane}
-                    pabuThreshold={view === 'pabu_mastery_curve' ? data.overallWinRate : undefined}
-                  />
-                : <ChampionTable
-                    data={filteredChampions}
-                    view={view as Exclude<ViewMode, 'mastery_curve' | 'pabu_mastery_curve' | 'slope_iterations' | 'off_role' | 'learning_profile'>}
-                  />
+            isSlopeView ? (
+              <SlopeIterationsView
+                data={filteredSlope}
+                masteryChampionCurves={data.masteryChampionCurves}
+                dataByLane={data.slopeIterationsByLane}
+                masteryChampionCurvesByLane={data.masteryChampionCurvesByLane}
+                onChampionClick={handleNavigateToMasteryCurve}
+                g50Map={g50Map}
+              />
+            ) : isOffRole ? (
+              <OffRoleView
+                data={filteredOffRole}
+                dataByLane={data.slopeIterationsByLane}
+                g50Map={g50Map}
+              />
+            ) : isLearningProfile ? (
+              <LearningProfileChart
+                data={data.slopeIterations}
+                rarePicks={hideRarePicks}
+                totalUniquePlayers={data.summary?.total_unique_players}
+                onNavigateToMasteryCurve={(champion) => handleNavigateToMasteryCurve(champion, null)}
+              />
+            ) : isMasteryCurve ? (
+              <MasteryCurveView
+                masteryChampionCurves={data.masteryChampionCurves}
+                masteryChampionCurvesByLane={data.masteryChampionCurvesByLane}
+                pabuThreshold={view === 'pabu_mastery_curve' ? data.overallWinRate : undefined}
+              />
+            ) : (
+              <ChampionTable
+                data={filteredChampions}
+                view={view as Exclude<ViewMode, 'mastery_curve' | 'pabu_mastery_curve' | 'slope_iterations' | 'off_role' | 'learning_profile'>}
+                slopeMap={slopeMap}
+              />
+            )
           )}
         </Box>
       </Box>
