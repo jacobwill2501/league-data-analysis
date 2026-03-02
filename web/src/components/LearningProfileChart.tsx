@@ -18,7 +18,6 @@ import { SLOPE_TIER_LINE_COLOR } from '../utils/tiers'
 interface Props {
   data: SlopeIterationStat[]
   rarePicks?: boolean
-  pabuThreshold?: number | null
   totalUniquePlayers?: number
   onNavigateToMasteryCurve?: (champion: string) => void
 }
@@ -50,6 +49,44 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
 }
 
+interface DotShapeProps {
+  cx?: number
+  cy?: number
+  r?: number
+  fill?: string
+  payload?: PlotPoint
+  onNavigate?: (champion: string) => void
+}
+
+function DotShape({ cx, cy, r = 5, fill = '#90CAF9', payload, onNavigate }: DotShapeProps) {
+  if (cx == null || cy == null) return null
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={r}
+      fill={fill}
+      fillOpacity={0.85}
+      stroke={fill}
+      strokeWidth={1}
+      style={{ cursor: onNavigate ? 'pointer' : 'default' }}
+      role={onNavigate ? 'button' : undefined}
+      tabIndex={onNavigate ? 0 : undefined}
+      aria-label={onNavigate ? `${payload?.champion} - navigate to mastery curve` : undefined}
+      onClick={() => {
+        if (payload?.champion && onNavigate) {
+          onNavigate(payload.champion)
+        }
+      }}
+      onKeyDown={(e) => {
+        if ((e.key === 'Enter' || e.key === ' ') && payload?.champion && onNavigate) {
+          onNavigate(payload.champion)
+        }
+      }}
+    />
+  )
+}
+
 // Recharts calls the custom tooltip component with active + payload props.
 // The payload array items each have a `payload` property holding the raw data point.
 interface TooltipEntry {
@@ -79,17 +116,17 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Toolti
       <Typography variant="body2" fontWeight={600} sx={{ mb: 0.5 }}>
         {d.champion}
       </Typography>
-      {d.slope_tier && (
-        <Typography
-          variant="body2"
-          sx={{
-            color: SLOPE_TIER_LINE_COLOR[d.slope_tier] ?? theme.palette.text.secondary,
-            mb: 0.5,
-          }}
-        >
-          {d.slope_tier}
-        </Typography>
-      )}
+      <Typography
+        variant="body2"
+        sx={{
+          color: d.slope_tier
+            ? (SLOPE_TIER_LINE_COLOR[d.slope_tier] ?? theme.palette.text.secondary)
+            : theme.palette.text.secondary,
+          mb: 0.5,
+        }}
+      >
+        {d.slope_tier ?? '—'}
+      </Typography>
       <Typography variant="body2" fontFamily="monospace" color="text.secondary">
         Starting WR: {fmtWr(d.initial_wr)}
       </Typography>
@@ -99,11 +136,9 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Toolti
       <Typography variant="body2" fontFamily="monospace" color="text.secondary">
         Games to Plateau: {d.inflection_games.toLocaleString()}
       </Typography>
-      {d.growth_type && (
-        <Typography variant="body2" fontFamily="monospace" color="text.secondary">
-          Growth: {d.growth_type}
-        </Typography>
-      )}
+      <Typography variant="body2" fontFamily="monospace" color="text.secondary">
+        Growth: {d.growth_type ?? '—'}
+      </Typography>
     </Box>
   )
 }
@@ -125,11 +160,7 @@ export function LearningProfileChart({
         ? totalUniquePlayers * 0.005
         : 0
 
-    // SlopeIterationStat doesn't declare medium_games in TypeScript but the
-    // actual JSON data includes it (it comes from the analysis pipeline).
-    // We access it via an index signature cast so TypeScript stays happy.
-    const getMediumGames = (d: SlopeIterationStat): number =>
-      ((d as unknown as Record<string, unknown>)['medium_games'] as number | undefined) ?? 0
+    const getMediumGames = (d: SlopeIterationStat): number => d.medium_games ?? 0
 
     const filtered = data.filter(
       (d) =>
@@ -152,10 +183,10 @@ export function LearningProfileChart({
         slope_tier: d.slope_tier,
         initial_wr: d.initial_wr,
         peak_wr: d.peak_wr,
-        inflection_games: d.inflection_games as number,
+        inflection_games: d.inflection_games!,
         growth_type: d.growth_type,
         medium_games: mg,
-        wrGainPp: ((d.peak_wr as number) - (d.initial_wr as number)) * 100,
+        wrGainPp: (d.peak_wr! - d.initial_wr!) * 100,
         r: clamp(rawR, 4, 12),
       }
     })
@@ -309,27 +340,14 @@ export function LearningProfileChart({
                 data={points}
                 fill={color}
                 opacity={0.85}
-                shape={(shapeProps: { cx?: number; cy?: number; payload?: PlotPoint }) => {
-                  const { cx = 0, cy = 0, payload } = shapeProps
-                  const r = payload?.r ?? 6
-                  return (
-                    <circle
-                      cx={cx}
-                      cy={cy}
-                      r={r}
-                      fill={color}
-                      fillOpacity={0.85}
-                      stroke={theme.palette.background.paper}
-                      strokeWidth={1}
-                      style={{ cursor: onNavigateToMasteryCurve ? 'pointer' : 'default' }}
-                      onClick={() => {
-                        if (payload?.champion && onNavigateToMasteryCurve) {
-                          onNavigateToMasteryCurve(payload.champion)
-                        }
-                      }}
-                    />
-                  )
-                }}
+                shape={(shapeProps) => (
+                  <DotShape
+                    {...shapeProps}
+                    r={shapeProps.payload?.r}
+                    fill={color}
+                    onNavigate={onNavigateToMasteryCurve}
+                  />
+                )}
               />
             )
           })}

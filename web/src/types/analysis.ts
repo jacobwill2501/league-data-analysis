@@ -112,6 +112,7 @@ export interface SlopeIterationStat {
   slope_tier: string | null
   growth_type: string | null
   valid_intervals: number | null
+  medium_games?: number
 }
 
 export interface SlopeIterationStatByLane extends SlopeIterationStat {
