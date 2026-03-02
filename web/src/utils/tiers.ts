@@ -1,6 +1,6 @@
 // web/src/utils/tiers.ts
 
-type ChipColor = 'success' | 'warning' | 'error' | 'default' | 'info'
+export type ChipColor = 'success' | 'warning' | 'error' | 'default' | 'info'
 
 export const SLOPE_TIER_CHIP_COLOR: Record<string, ChipColor> = {
   'Easy Pickup':      'success',
@@ -20,4 +20,11 @@ export const GROWTH_TYPE_CHIP_COLOR: Record<string, ChipColor> = {
   'Plateau':   'default',
   'Gradual':   'info',
   'Continual': 'success',
+}
+
+export const GAMES_TO_50_STATUS_COLORS: Record<string, string> = {
+  'always above 50%': '#66BB6A',
+  'never reaches 50%': '#EF5350',
+  'crosses 50%': '#90CAF9',
+  'low data': '#888',
 }

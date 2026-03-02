@@ -7,7 +7,6 @@ import {
   flexRender,
   type ColumnDef,
   type SortingState,
-  type Row,
 } from '@tanstack/react-table'
 import Table from '@mui/material/Table'
 import TableHead from '@mui/material/TableHead'
@@ -26,8 +25,8 @@ import ToggleButton from '@mui/material/ToggleButton'
 import { LineChart, Line, ReferenceLine, YAxis, Tooltip as RechartsTooltip } from 'recharts'
 import type { GameTo50Entry, LaneCurve, MasteryChampionCurve, SlopeIterationStat, SlopeIterationStatByLane } from '../types/analysis'
 import { ChampionIcon } from './ChampionIcon'
-import { fmtLane, fmtPct } from '../utils/format'
-import { SLOPE_TIER_CHIP_COLOR, SLOPE_TIER_LINE_COLOR, GROWTH_TYPE_CHIP_COLOR } from '../utils/tiers'
+import { fmtLane, fmtPct, nullLastSortingFn } from '../utils/format'
+import { SLOPE_TIER_CHIP_COLOR, SLOPE_TIER_LINE_COLOR, GROWTH_TYPE_CHIP_COLOR, GAMES_TO_50_STATUS_COLORS } from '../utils/tiers'
 
 function SlopeSparkline({
   champion,
@@ -160,16 +159,6 @@ function wrColor(val: number | null): string {
   if (pct < 48) return 'error.main'
   if (pct > 52) return 'success.main'
   return 'text.primary'
-}
-
-const nullLastSortingFn = <T extends object>(
-  rowA: Row<T>,
-  rowB: Row<T>,
-  columnId: string,
-): number => {
-  const a = rowA.getValue<number | null>(columnId) ?? Infinity
-  const b = rowB.getValue<number | null>(columnId) ?? Infinity
-  return a - b
 }
 
 interface Props {
@@ -312,12 +301,6 @@ export function SlopeIterationsView({ data, masteryChampionCurves, dataByLane, m
         if (!entry) return <span style={{ color: '#666' }}>—</span>
         const games = entry.estimated_games
         const status = entry.status
-        const statusColors: Record<string, string> = {
-          'always above 50%': '#66BB6A',
-          'never reaches 50%': '#EF5350',
-          'crosses 50%': '#90CAF9',
-          'low data': '#888',
-        }
         return (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             {games != null && (
@@ -330,7 +313,7 @@ export function SlopeIterationsView({ data, masteryChampionCurves, dataByLane, m
                 label={status}
                 size="small"
                 variant="outlined"
-                sx={{ fontSize: 10, color: statusColors[status] ?? 'text.secondary', borderColor: statusColors[status] ?? 'divider' }}
+                sx={{ fontSize: 10, color: GAMES_TO_50_STATUS_COLORS[status] ?? 'text.secondary', borderColor: GAMES_TO_50_STATUS_COLORS[status] ?? 'divider' }}
               />
             )}
           </Box>

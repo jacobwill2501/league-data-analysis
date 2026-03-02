@@ -1,3 +1,18 @@
+import { type Row } from '@tanstack/react-table'
+
+export function nullLastSortingFn<T extends object>(
+  rowA: Row<T>,
+  rowB: Row<T>,
+  columnId: string
+): number {
+  const a = rowA.getValue<number | null>(columnId)
+  const b = rowB.getValue<number | null>(columnId)
+  if (a == null && b == null) return 0
+  if (a == null) return 1
+  if (b == null) return -1
+  return a - b
+}
+
 export function fmtPct(val: number | null | undefined): string {
   if (val === null || val === undefined) return '—'
   return (val * 100).toFixed(2) + '%'

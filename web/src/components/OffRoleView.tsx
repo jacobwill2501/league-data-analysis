@@ -7,7 +7,6 @@ import {
   flexRender,
   type ColumnDef,
   type SortingState,
-  type Row,
 } from '@tanstack/react-table'
 import Table from '@mui/material/Table'
 import TableHead from '@mui/material/TableHead'
@@ -25,17 +24,8 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import ToggleButton from '@mui/material/ToggleButton'
 import type { GameTo50Entry, SlopeIterationStat, SlopeIterationStatByLane } from '../types/analysis'
 import { ChampionIcon } from './ChampionIcon'
-import { fmtLane, fmtPct } from '../utils/format'
-import { SLOPE_TIER_CHIP_COLOR } from '../utils/tiers'
-
-type ChipColor = 'success' | 'warning' | 'error' | 'default' | 'info'
-
-const STATUS_COLORS: Record<string, string> = {
-  'always above 50%': '#66BB6A',
-  'never reaches 50%': '#EF5350',
-  'crosses 50%': '#90CAF9',
-  'low data': '#888',
-}
+import { fmtLane, fmtPct, nullLastSortingFn } from '../utils/format'
+import { ChipColor, SLOPE_TIER_CHIP_COLOR, GAMES_TO_50_STATUS_COLORS } from '../utils/tiers'
 
 function wrColor(val: number | null): string {
   if (val === null || val === undefined) return 'text.primary'
@@ -45,14 +35,11 @@ function wrColor(val: number | null): string {
   return 'text.primary'
 }
 
-const nullLastSortingFn = <T extends object>(
-  rowA: Row<T>,
-  rowB: Row<T>,
-  columnId: string,
-): number => {
-  const a = rowA.getValue<number | null>(columnId) ?? Infinity
-  const b = rowB.getValue<number | null>(columnId) ?? Infinity
-  return a - b
+const COLUMN_TOOLTIPS: Record<string, string> = {
+  slope_tier:       'How steep is the early learning curve? Easy Pickup = competent within a few games. Very Hard Pickup = steep penalty before basics are learned.',
+  initial_wr:       'Win rate in the 5–25 games bracket. Your floor — the worst you should expect before learning the basics.',
+  estimated_games:  'Estimated games until win rate crosses 50%. From the Easiest to Learn analysis.',
+  peak_wr:          'Highest observed win rate across all mastery brackets. Your ceiling if you invest deeply.',
 }
 
 interface Props {
@@ -154,7 +141,7 @@ export function OffRoleView({ data, dataByLane, g50Map }: Props) {
                 label={entry.status}
                 size="small"
                 variant="outlined"
-                sx={{ fontSize: 10, color: STATUS_COLORS[entry.status] ?? 'text.secondary', borderColor: STATUS_COLORS[entry.status] ?? 'divider' }}
+                sx={{ fontSize: 10, color: GAMES_TO_50_STATUS_COLORS[entry.status] ?? 'text.secondary', borderColor: GAMES_TO_50_STATUS_COLORS[entry.status] ?? 'divider' }}
               />
             )}
           </Box>
@@ -176,13 +163,6 @@ export function OffRoleView({ data, dataByLane, g50Map }: Props) {
       },
     },
   ], [g50Map])
-
-  const COLUMN_TOOLTIPS: Record<string, string> = {
-    slope_tier:       'How steep is the early learning curve? Easy Pickup = competent within a few games. Very Hard Pickup = steep penalty before basics are learned.',
-    initial_wr:       'Win rate in the 5–25 games bracket. Your floor — the worst you should expect before learning the basics.',
-    estimated_games:  'Estimated games until win rate crosses 50%. From the Easiest to Learn analysis.',
-    peak_wr:          'Highest observed win rate across all mastery brackets. Your ceiling if you invest deeply.',
-  }
 
   const table = useReactTable({
     data: activeData,
