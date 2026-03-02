@@ -24,7 +24,7 @@ import Tooltip from '@mui/material/Tooltip'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import ToggleButton from '@mui/material/ToggleButton'
 import { LineChart, Line, ReferenceLine, YAxis, Tooltip as RechartsTooltip } from 'recharts'
-import type { LaneCurve, MasteryChampionCurve, SlopeIterationStat, SlopeIterationStatByLane } from '../types/analysis'
+import type { GameTo50Entry, LaneCurve, MasteryChampionCurve, SlopeIterationStat, SlopeIterationStatByLane } from '../types/analysis'
 import { ChampionIcon } from './ChampionIcon'
 import { fmtLane, fmtPct } from '../utils/format'
 import { SLOPE_TIER_CHIP_COLOR, SLOPE_TIER_LINE_COLOR, GROWTH_TYPE_CHIP_COLOR } from '../utils/tiers'
@@ -178,9 +178,10 @@ interface Props {
   dataByLane?: SlopeIterationStatByLane[]
   masteryChampionCurvesByLane?: Record<string, Record<string, LaneCurve>> | null
   onChampionClick?: (champion: string, lane: string | null) => void
+  g50Map?: Map<string, GameTo50Entry>
 }
 
-export function SlopeIterationsView({ data, masteryChampionCurves, dataByLane, masteryChampionCurvesByLane, onChampionClick }: Props) {
+export function SlopeIterationsView({ data, masteryChampionCurves, dataByLane, masteryChampionCurvesByLane, onChampionClick, g50Map }: Props) {
   const [sorting, setSorting] = useState<SortingState>([
     { id: 'slope_tier', desc: false },
   ])
@@ -297,7 +298,50 @@ export function SlopeIterationsView({ data, masteryChampionCurves, dataByLane, m
         return v === null || v === undefined ? '—' : String(v)
       },
     },
-  ], [masteryChampionCurves, masteryChampionCurvesByLane, onChampionClick])
+    {
+      id: 'estimated_games',
+      header: () => (
+        <Tooltip title="Estimated games until win rate crosses 50%. From the Easiest to Learn analysis." placement="top" arrow>
+          <span>Est. Games to 50%</span>
+        </Tooltip>
+      ),
+      enableSorting: true,
+      sortingFn: nullLastSortingFn,
+      accessorFn: (row: SlopeIterationStat) => {
+        const entry = g50Map?.get(row.champion)
+        return entry?.estimated_games ?? null
+      },
+      cell: ({ row }) => {
+        const entry = g50Map?.get(row.original.champion)
+        if (!entry) return <span style={{ color: '#666' }}>—</span>
+        const games = entry.estimated_games
+        const status = entry.status
+        const statusColors: Record<string, string> = {
+          'always above 50%': '#66BB6A',
+          'never reaches 50%': '#EF5350',
+          'crosses 50%': '#90CAF9',
+          'low data': '#888',
+        }
+        return (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            {games != null && (
+              <Typography variant="body2" fontFamily="monospace">
+                {games.toLocaleString()}
+              </Typography>
+            )}
+            {status && (
+              <Chip
+                label={status}
+                size="small"
+                variant="outlined"
+                sx={{ fontSize: 10, color: statusColors[status] ?? 'text.secondary', borderColor: statusColors[status] ?? 'divider' }}
+              />
+            )}
+          </Box>
+        )
+      },
+    },
+  ], [masteryChampionCurves, masteryChampionCurvesByLane, onChampionClick, g50Map])
 
   const table = useReactTable({
     data: activeData,
@@ -319,6 +363,7 @@ export function SlopeIterationsView({ data, masteryChampionCurves, dataByLane, m
     initial_wr:         'Win rate in the 5–25 games bracket — your baseline performance with minimal experience.',
     peak_wr:            'Highest observed win rate across all mastery brackets for this champion.',
     valid_intervals:    'Number of mastery brackets with sufficient data (≥ 200 games) used in this analysis.',
+    estimated_games:    'Estimated games until win rate crosses 50%. Cross-joined from the Easiest to Learn analysis.',
   }
 
   return (
